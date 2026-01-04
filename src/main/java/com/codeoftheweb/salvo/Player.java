@@ -1,21 +1,30 @@
 package com.codeoftheweb.salvo;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @Entity
 public class Player {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private long id;
-    
+
     private String userName;
-    
+
+    @OneToMany(mappedBy = "player", fetch = FetchType.EAGER)
+    private Set<GamePlayer> gamePlayers = new HashSet<>();
+
     public Player() { }
-    
+
     public Player(String user) {
         this.userName = user;
     }
@@ -30,6 +39,11 @@ public class Player {
 
     public void setUserName(String userName) {
         this.userName = userName;
+    }
+
+    @JsonIgnore
+    public List<Game> getGames() {
+        return gamePlayers.stream().map(GamePlayer::getGame).toList();
     }
 
     @Override
