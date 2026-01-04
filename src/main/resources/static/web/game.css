@@ -1,0 +1,29 @@
+body {
+    font-family: "Georgia", "Times New Roman", serif;
+    margin: 24px;
+}
+
+#game-info {
+    margin-bottom: 16px;
+    font-weight: bold;
+}
+
+table.grid {
+    border-collapse: collapse;
+}
+
+table.grid th,
+table.grid td {
+    border: 1px solid #333;
+    width: 32px;
+    height: 32px;
+    text-align: center;
+}
+
+table.grid th {
+    background: #f2f2f2;
+}
+
+table.grid td.ship {
+    background: #6aa9d8;
+}
