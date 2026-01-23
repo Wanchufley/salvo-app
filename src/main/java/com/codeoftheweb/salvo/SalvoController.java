@@ -1,5 +1,6 @@
 package com.codeoftheweb.salvo;
 
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +51,7 @@ public class SalvoController {
 		dto.put("created", game.getCreationDate());
 		dto.put("gamePlayers", game.getGamePlayers().stream().map(this::makeGamePlayerDTO).toList());
 		dto.put("ships", gamePlayer.getShips().stream().map(this::makeShipDTO).toList());
+		dto.put("salvoes", makeSalvoesDTO(game));
 		return dto;
 	}
 
@@ -65,6 +67,18 @@ public class SalvoController {
 		dto.put("type", ship.getShipType());
 		dto.put("locations", ship.getLocations());
 		return dto;
+	}
+
+	private Map<Long, Map<Integer, List<String>>> makeSalvoesDTO(Game game) {
+		Map<Long, Map<Integer, List<String>>> salvoesByPlayer = new LinkedHashMap<>();
+		for (GamePlayer gamePlayer : game.getGamePlayers()) {
+			Map<Integer, List<String>> salvoesByTurn = new LinkedHashMap<>();
+			gamePlayer.getSalvoes().stream()
+				.sorted(Comparator.comparingInt(Salvo::getTurn))
+				.forEach(salvo -> salvoesByTurn.put(salvo.getTurn(), salvo.getLocations()));
+			salvoesByPlayer.put(gamePlayer.getId(), salvoesByTurn);
+		}
+		return salvoesByPlayer;
 	}
 
 	private Map<String, Object> makePlayerDTO(Player player) {

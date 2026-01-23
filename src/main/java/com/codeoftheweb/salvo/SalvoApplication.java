@@ -19,7 +19,8 @@ public class SalvoApplication {
     public CommandLineRunner initData(PlayerRepository playerRepository,
                                       GameRepository gameRepository,
                                       GamePlayerRepository gamePlayerRepository,
-                                      ShipRepository shipRepository) {
+                                      ShipRepository shipRepository,
+                                      SalvoRepository salvoRepository) {
         return (args) -> {
             Player player1 = playerRepository.save(new Player("j.bauer@ctu.gov"));
             Player player2 = playerRepository.save(new Player("c.obrian@ctu.gov"));
@@ -105,6 +106,36 @@ public class SalvoApplication {
             addShip(gp14, "Patrol Boat", List.of("G6", "H6"), ships);
 
             shipRepository.saveAll(ships);
+
+            List<Salvo> salvoes = new ArrayList<>();
+
+            addSalvo(gp1, 1, List.of("B5", "C5", "F1"), salvoes);
+            addSalvo(gp2, 1, List.of("B4", "B5", "B6"), salvoes);
+            addSalvo(gp1, 2, List.of("F2", "D5"), salvoes);
+            addSalvo(gp2, 2, List.of("E1", "H3", "A2"), salvoes);
+
+            addSalvo(gp3, 1, List.of("A2", "A4", "G6"), salvoes);
+            addSalvo(gp4, 1, List.of("B5", "D5", "C7"), salvoes);
+            addSalvo(gp3, 2, List.of("A3", "H6"), salvoes);
+            addSalvo(gp4, 2, List.of("C5", "C6"), salvoes);
+
+            addSalvo(gp5, 1, List.of("G6", "H6", "A4"), salvoes);
+            addSalvo(gp6, 1, List.of("H1", "H2", "H3"), salvoes);
+            addSalvo(gp5, 2, List.of("A2", "A3", "D8"), salvoes);
+            addSalvo(gp6, 2, List.of("E1", "F2", "G3"), salvoes);
+
+            addSalvo(gp7, 1, List.of("A3", "A4", "F7"), salvoes);
+            addSalvo(gp8, 1, List.of("B5", "C6", "H1"), salvoes);
+            addSalvo(gp7, 2, List.of("A2", "G6", "H6"), salvoes);
+            addSalvo(gp8, 2, List.of("C5", "C7", "D5"), salvoes);
+
+            addSalvo(gp9, 1, List.of("A1", "A2", "A3"), salvoes);
+            addSalvo(gp10, 1, List.of("B5", "B6", "C7"), salvoes);
+            addSalvo(gp9, 2, List.of("G6", "G7", "G8"), salvoes);
+            addSalvo(gp10, 2, List.of("C6", "D6", "E6"), salvoes);
+            addSalvo(gp10, 3, List.of("H1", "H8"), salvoes);
+
+            salvoRepository.saveAll(salvoes);
         };
     }
 
@@ -112,5 +143,11 @@ public class SalvoApplication {
         Ship ship = new Ship(type, locations);
         gamePlayer.addShip(ship);
         ships.add(ship);
+    }
+
+    private static void addSalvo(GamePlayer gamePlayer, int turn, List<String> locations, List<Salvo> salvoes) {
+        Salvo salvo = new Salvo(turn, locations);
+        gamePlayer.addSalvo(salvo);
+        salvoes.add(salvo);
     }
 }
