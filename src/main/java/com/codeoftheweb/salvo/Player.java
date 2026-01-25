@@ -23,6 +23,9 @@ public class Player {
     @OneToMany(mappedBy = "player", fetch = FetchType.EAGER)
     private Set<GamePlayer> gamePlayers = new HashSet<>();
 
+    @OneToMany(mappedBy = "player", fetch = FetchType.EAGER)
+    private Set<Score> scores = new HashSet<>();
+
     public Player() { }
 
     public Player(String user) {
@@ -44,6 +47,10 @@ public class Player {
     @JsonIgnore
     public List<Game> getGames() {
         return gamePlayers.stream().map(GamePlayer::getGame).toList();
+    }
+
+    public Set<Score> getScores() {
+        return scores;
     }
 
     @Override

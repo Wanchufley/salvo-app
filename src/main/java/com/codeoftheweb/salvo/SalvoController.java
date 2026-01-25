@@ -40,6 +40,7 @@ public class SalvoController {
 		dto.put("id", game.getId());
 		dto.put("created", game.getCreationDate());
 		dto.put("gamePlayers", game.getGamePlayers().stream().map(this::makeGamePlayerDTO).toList());
+		dto.put("scores", game.getScores().stream().map(this::makeScoreDTO).toList());
 		return dto;
 	}
 
@@ -79,6 +80,14 @@ public class SalvoController {
 			salvoesByPlayer.put(gamePlayer.getId(), salvoesByTurn);
 		}
 		return salvoesByPlayer;
+	}
+
+	private Map<String, Object> makeScoreDTO(Score score) {
+		Map<String, Object> dto = new LinkedHashMap<>();
+		dto.put("score", score.getScore());
+		dto.put("finishDate", score.getFinishDate());
+		dto.put("player", makePlayerDTO(score.getPlayer()));
+		return dto;
 	}
 
 	private Map<String, Object> makePlayerDTO(Player player) {

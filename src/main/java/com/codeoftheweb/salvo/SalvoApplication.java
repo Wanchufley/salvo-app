@@ -20,7 +20,8 @@ public class SalvoApplication {
                                       GameRepository gameRepository,
                                       GamePlayerRepository gamePlayerRepository,
                                       ShipRepository shipRepository,
-                                      SalvoRepository salvoRepository) {
+                                      SalvoRepository salvoRepository,
+                                      ScoreRepository scoreRepository) {
         return (args) -> {
             Player player1 = playerRepository.save(new Player("j.bauer@ctu.gov"));
             Player player2 = playerRepository.save(new Player("c.obrian@ctu.gov"));
@@ -136,6 +137,18 @@ public class SalvoApplication {
             addSalvo(gp10, 3, List.of("H1", "H8"), salvoes);
 
             salvoRepository.saveAll(salvoes);
+
+            List<Score> scores = new ArrayList<>();
+            addScore(game1, player1, 1.0, scores);
+            addScore(game1, player2, 0.0, scores);
+            addScore(game2, player1, 0.5, scores);
+            addScore(game2, player2, 0.5, scores);
+            addScore(game3, player2, 1.0, scores);
+            addScore(game3, player4, 0.0, scores);
+            addScore(game4, player2, 0.5, scores);
+            addScore(game4, player1, 0.5, scores);
+
+            scoreRepository.saveAll(scores);
         };
     }
 
@@ -149,5 +162,10 @@ public class SalvoApplication {
         Salvo salvo = new Salvo(turn, locations);
         gamePlayer.addSalvo(salvo);
         salvoes.add(salvo);
+    }
+
+    private static void addScore(Game game, Player player, Double value, List<Score> scores) {
+        Date finishDate = new Date(game.getCreationDate().getTime() + 1_800_000L);
+        scores.add(new Score(game, player, value, finishDate));
     }
 }

@@ -1,0 +1,25 @@
+body {
+    font-family: "Georgia", "Times New Roman", serif;
+    margin: 24px;
+}
+
+section {
+    margin-bottom: 24px;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    max-width: 640px;
+}
+
+th,
+td {
+    border: 1px solid #333;
+    padding: 6px 10px;
+    text-align: left;
+}
+
+th {
+    background: #f2f2f2;
+}

@@ -10,6 +10,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import java.util.Collections;
 
 @Entity
 public class Game {
@@ -22,6 +23,9 @@ public class Game {
 
 	@OneToMany(mappedBy = "game", fetch = FetchType.EAGER)
 	private Set<GamePlayer> gamePlayers = new HashSet<>();
+
+	@OneToMany(mappedBy = "game", fetch = FetchType.EAGER)
+	private Set<Score> scores = new HashSet<>();
 
     public Game() {
     }
@@ -40,6 +44,10 @@ public class Game {
 
 	public Set<GamePlayer> getGamePlayers() {
 		return gamePlayers;
+	}
+
+	public Set<Score> getScores() {
+		return Collections.unmodifiableSet(scores);
 	}
 
 	public List<Player> getPlayers() {
