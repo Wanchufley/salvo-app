@@ -12,7 +12,7 @@ export default defineConfig({
       input: {
         games: path.resolve(__dirname, "web/games.html"),
         game: path.resolve(__dirname, "web/game.html"),
-        roster: path.resolve(__dirname, "roster.html")
+        login: path.resolve(__dirname, "web/login.html")
       }
     }
   }
