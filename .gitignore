@@ -35,3 +35,6 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### BUILD ARTIFACTS ###
+src/main/resources/static/assets/
