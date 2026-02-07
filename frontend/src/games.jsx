@@ -6,6 +6,7 @@ import "./styles.css";
 
 function GamesPage() {
   const [games, setGames] = useState([]);
+  const [currentPlayerId, setCurrentPlayerId] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -21,10 +22,17 @@ function GamesPage() {
         if (active) {
           if (Array.isArray(data)) {
             setGames(data);
+            setCurrentPlayerId(null);
           } else if (data && Array.isArray(data.games)) {
             setGames(data.games);
+            if (data.player && typeof data.player.id === "number") {
+              setCurrentPlayerId(data.player.id);
+            } else {
+              setCurrentPlayerId(null);
+            }
           } else {
             setGames([]);
+            setCurrentPlayerId(null);
           }
         }
       })
@@ -37,6 +45,52 @@ function GamesPage() {
       active = false;
     };
   }, []);
+
+  async function handleCreateGame() {
+    try {
+      const response = await fetch("/api/games", { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message = data.error || `Request failed: ${response.status}`;
+        window.alert(message);
+        return;
+      }
+
+      const gpid = data.gpid;
+      if (gpid == null) {
+        window.alert("Unexpected server response when creating game.");
+        return;
+      }
+
+      window.location.href = `/web/game.html?gp=${gpid}`;
+    } catch (err) {
+      window.alert(err.message || "Network error while creating game.");
+    }
+  }
+
+  async function handleJoinGame(gameId) {
+    try {
+      const response = await fetch(`/api/games/${gameId}/players`, { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message = data.error || `Request failed: ${response.status}`;
+        window.alert(message);
+        return;
+      }
+
+      const gpid = data.gpid;
+      if (gpid == null) {
+        window.alert("Unexpected server response when joining game.");
+        return;
+      }
+
+      window.location.href = `/web/game.html?gp=${gpid}`;
+    } catch (err) {
+      window.alert(err.message || "Network error while joining game.");
+    }
+  }
 
   const leaderboard = useMemo(() => buildLeaderboard(games), [games]);
 
@@ -81,29 +135,80 @@ function GamesPage() {
         <div className="card-header">
           <h2>Games</h2>
           <span className="tag">{games.length} total</span>
+          {currentPlayerId != null ? (
+            <button
+              type="button"
+              className="button"
+              style={{ marginLeft: "auto" }}
+              onClick={handleCreateGame}
+            >
+              Create Game
+            </button>
+          ) : null}
         </div>
         {error ? <p className="notice">{error}</p> : null}
         <div className="game-list">
-          {games.map(game => (
-            <article key={game.id} className="game-row">
-              <strong>Game {game.id}</strong>
-              <div className="game-meta">
-                <span>{formatDate(game.created)}</span>
-                <span>{(game.gamePlayers || []).length} players</span>
-              </div>
-              <div className="game-players">
-                {(game.gamePlayers || []).map(gp => (
-                  <a
-                    key={gp.id}
-                    className="link-button"
-                    href={`/web/game.html?gp=${gp.id}`}
-                  >
-                    {gp.player?.email || "Unknown"}
-                  </a>
-                ))}
-              </div>
-            </article>
-          ))}
+          {games.map(game => {
+            const gamePlayers = game.gamePlayers || [];
+            const hasCurrentPlayer =
+              currentPlayerId != null &&
+              gamePlayers.some(gp => gp.player && gp.player.id === currentPlayerId);
+
+            const canJoin =
+              currentPlayerId != null &&
+              !hasCurrentPlayer &&
+              gamePlayers.length === 1;
+
+            return (
+              <article key={game.id} className="game-row">
+                <strong>Game {game.id}</strong>
+                <div className="game-meta">
+                  <span>{formatDate(game.created)}</span>
+                  <span>{gamePlayers.length} players</span>
+                </div>
+                <div className="game-players">
+                  {gamePlayers.map(gp => {
+                    const player = gp.player;
+                    const label = player?.email || "Unknown";
+                    const isCurrentPlayer =
+                      currentPlayerId != null &&
+                      player &&
+                      typeof player.id === "number" &&
+                      player.id === currentPlayerId;
+
+                    if (isCurrentPlayer) {
+                      return (
+                        <a
+                          key={gp.id}
+                          className="link-button"
+                          href={`/web/game.html?gp=${gp.id}`}
+                        >
+                          {label} (you)
+                        </a>
+                      );
+                    }
+
+                    return (
+                      <span key={gp.id} className="player-label">
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+                {canJoin ? (
+                  <div className="game-actions">
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => handleJoinGame(game.id)}
+                    >
+                      Join Game
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       </section>
       </AppShell>

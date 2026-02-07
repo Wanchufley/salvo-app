@@ -78,15 +78,12 @@ export function AppShell({ title, subtitle, children }) {
       <header className="app-header">
         <div className="header-row">
           <div className="brand">
-            <button
-              type="button"
-              className="brand-button"
-              onClick={() => {
-                window.location.href = "/web/games.html";
-              }}
+            <a
+              href="/web/games.html"
+              aria-label="Go to games"
             >
               <Logo />
-            </button>
+            </a>
             <h1>{title}</h1>
             {subtitle ? <span>{subtitle}</span> : null}
           </div>
