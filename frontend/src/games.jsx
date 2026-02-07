@@ -19,7 +19,13 @@ function GamesPage() {
       })
       .then(data => {
         if (active) {
-          setGames(Array.isArray(data) ? data : []);
+          if (Array.isArray(data)) {
+            setGames(data);
+          } else if (data && Array.isArray(data.games)) {
+            setGames(data.games);
+          } else {
+            setGames([]);
+          }
         }
       })
       .catch(err => {

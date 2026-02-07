@@ -3,10 +3,22 @@ package com.codeoftheweb.salvo;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import static org.springframework.security.config.Customizer.withDefaults;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
 
 @SpringBootApplication
 public class SalvoApplication {
@@ -21,12 +33,13 @@ public class SalvoApplication {
                                       GamePlayerRepository gamePlayerRepository,
                                       ShipRepository shipRepository,
                                       SalvoRepository salvoRepository,
-                                      ScoreRepository scoreRepository) {
+                                      ScoreRepository scoreRepository,
+                                      PasswordEncoder passwordEncoder) {
         return (args) -> {
-            Player player1 = playerRepository.save(new Player("j.bauer@ctu.gov", "24"));
-            Player player2 = playerRepository.save(new Player("c.obrian@ctu.gov", "42"));
-            Player player3 = playerRepository.save(new Player("kim_bauer@gmail.com", "kb"));
-            Player player4 = playerRepository.save(new Player("t.almeida@ctu.gov", "mole"));
+            Player player1 = playerRepository.save(new Player("j.bauer@ctu.gov", passwordEncoder.encode("24")));
+            Player player2 = playerRepository.save(new Player("c.obrian@ctu.gov", passwordEncoder.encode("42")));
+            Player player3 = playerRepository.save(new Player("kim_bauer@gmail.com", passwordEncoder.encode("kb")));
+            Player player4 = playerRepository.save(new Player("t.almeida@ctu.gov", passwordEncoder.encode("mole")));
 
             Game game1 = new Game();
             Game game2 = new Game();
@@ -167,5 +180,87 @@ public class SalvoApplication {
     private static void addScore(Game game, Player player, Double value, List<Score> scores) {
         Date finishDate = new Date(game.getCreationDate().getTime() + 1_800_000L);
         scores.add(new Score(game, player, value, finishDate));
+    }
+}
+
+@Configuration
+@EnableWebSecurity
+class SecurityConfig {
+
+    private final PlayerRepository playerRepository;
+
+    SecurityConfig(PlayerRepository playerRepository) {
+        this.playerRepository = playerRepository;
+    }
+
+    @Bean
+    PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    UserDetailsService userDetailsService() {
+        return username -> {
+            Player player = playerRepository.findByUserName(username);
+            if (player == null) {
+                throw new UsernameNotFoundException("User " + username + " not found");
+            }
+            UserDetails user = User.withUsername(player.getUserName())
+                .password(player.getPassword())
+                .roles("USER")
+                .build();
+            return user;
+        };
+    }
+
+    @Bean
+    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .cors(withDefaults())
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(
+                    "/web/**",
+                    "/assets/**",
+                    "/roster.html",
+                    "/roster.js"
+                ).permitAll()
+                .requestMatchers(
+                    "/api/login",
+                    "/api/logout",
+                    "/api/players",
+                    "/api/games",
+                    "/api/player"
+                ).permitAll()
+                .requestMatchers("/api/game_view/**").authenticated()
+                .anyRequest().permitAll()
+            )
+            .formLogin(form -> form
+                .loginProcessingUrl("/api/login")
+                .usernameParameter("username")
+                .passwordParameter("password")
+                .successHandler((request, response, authentication) -> {
+                    response.setStatus(HttpServletResponse.SC_OK);
+                })
+                .failureHandler((request, response, exception) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"error\":\"Invalid username or password\"}");
+                })
+                .permitAll()
+            )
+            .logout(logout -> logout
+                .logoutUrl("/api/logout")
+                .logoutSuccessHandler((request, response, authentication) -> {
+                    response.setStatus(HttpServletResponse.SC_OK);
+                })
+            )
+            .exceptionHandling(exception -> exception
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                })
+            );
+
+        return http.build();
     }
 }

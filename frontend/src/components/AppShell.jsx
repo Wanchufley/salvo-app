@@ -78,11 +78,22 @@ export function AppShell({ title, subtitle, children }) {
       <header className="app-header">
         <div className="header-row">
           <div className="brand">
-            <Logo />
+            <button
+              type="button"
+              className="brand-button"
+              onClick={() => {
+                window.location.href = "/web/games.html";
+              }}
+            >
+              <Logo />
+            </button>
             <h1>{title}</h1>
             {subtitle ? <span>{subtitle}</span> : null}
           </div>
           <div className="header-actions">
+            {authUser ? (
+              <span className="tag">Logged in as {authUser.email}</span>
+            ) : null}
             <button type="button" className="toggle" onClick={toggleTheme}>
               {theme === "dark" ? "Light mode" : "Dark mode"}
             </button>
