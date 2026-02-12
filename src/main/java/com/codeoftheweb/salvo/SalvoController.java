@@ -1,6 +1,7 @@
 package com.codeoftheweb.salvo;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -10,7 +11,10 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,6 +39,9 @@ public class SalvoController {
 
 	@Autowired
 	private PasswordEncoder passwordEncoder;
+
+	@Autowired
+	private AuthenticationManager authenticationManager;
 
 	@Autowired
 	private ObjectMapper objectMapper;
@@ -147,7 +154,8 @@ public class SalvoController {
 	public ResponseEntity<Map<String, Object>> register(
 		@RequestBody(required = false) String body,
 		@RequestParam(required = false) String username,
-		@RequestParam(required = false) String password
+		@RequestParam(required = false) String password,
+		HttpServletRequest request
 	) {
 		String bodyUserName = null;
 		String bodyPassword = null;
@@ -181,6 +189,11 @@ public class SalvoController {
 
 		Player player = new Player(normalizedUserName, passwordEncoder.encode(normalizedPassword));
 		playerRepository.save(player);
+
+		UsernamePasswordAuthenticationToken authRequest =
+			new UsernamePasswordAuthenticationToken(normalizedUserName, normalizedPassword);
+		Authentication authentication = authenticationManager.authenticate(authRequest);
+		SecurityContextHolder.getContext().setAuthentication(authentication);
 
 		Map<String, Object> response = new LinkedHashMap<>();
 		response.put("id", player.getId());
