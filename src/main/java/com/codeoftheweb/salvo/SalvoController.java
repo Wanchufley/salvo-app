@@ -2,6 +2,7 @@ package com.codeoftheweb.salvo;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -14,8 +15,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,6 +48,9 @@ public class SalvoController {
 
 	@Autowired
 	private ObjectMapper objectMapper;
+
+	private final HttpSessionSecurityContextRepository securityContextRepository =
+		new HttpSessionSecurityContextRepository();
 
 	@GetMapping("/games")
 	public Map<String, Object> getGames(Authentication authentication) {
@@ -155,7 +161,8 @@ public class SalvoController {
 		@RequestBody(required = false) String body,
 		@RequestParam(required = false) String username,
 		@RequestParam(required = false) String password,
-		HttpServletRequest request
+		HttpServletRequest request,
+		HttpServletResponse response
 	) {
 		String bodyUserName = null;
 		String bodyPassword = null;
@@ -193,13 +200,16 @@ public class SalvoController {
 		UsernamePasswordAuthenticationToken authRequest =
 			new UsernamePasswordAuthenticationToken(normalizedUserName, normalizedPassword);
 		Authentication authentication = authenticationManager.authenticate(authRequest);
-		SecurityContextHolder.getContext().setAuthentication(authentication);
+		SecurityContext context = SecurityContextHolder.createEmptyContext();
+		context.setAuthentication(authentication);
+		SecurityContextHolder.setContext(context);
+		securityContextRepository.saveContext(context, request, response);
 
-		Map<String, Object> response = new LinkedHashMap<>();
-		response.put("id", player.getId());
-		response.put("name", player.getUserName());
+		Map<String, Object> responseBody = new LinkedHashMap<>();
+		responseBody.put("id", player.getId());
+		responseBody.put("name", player.getUserName());
 
-		return ResponseEntity.status(HttpStatus.CREATED).body(response);
+		return ResponseEntity.status(HttpStatus.CREATED).body(responseBody);
 	}
 
 	@RequestMapping("/game_view/{gamePlayerId}")
