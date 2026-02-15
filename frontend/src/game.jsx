@@ -6,6 +6,7 @@ import "./styles.css";
 
 const rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 const cols = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const MAX_SALVO_SHOTS = 5;
 const SHIP_SPECS = [
   { type: "Aircraft Carrier", length: 5 },
   { type: "Battleship", length: 4 },
@@ -22,6 +23,7 @@ function GameViewPage() {
   const [selectedShipType, setSelectedShipType] = useState(null);
   const [startCell, setStartCell] = useState(null);
   const [placementShips, setPlacementShips] = useState([]);
+  const [selectedSalvoCells, setSelectedSalvoCells] = useState([]);
 
   const loadGameView = useCallback(async () => {
     if (!gamePlayerId) return;
@@ -50,6 +52,10 @@ function GameViewPage() {
     };
   }, [gamePlayerId, loadGameView]);
 
+  useEffect(() => {
+    setSelectedSalvoCells([]);
+  }, [data?.gameId, data?.gamePlayerId]);
+
   const postShips = useCallback(
     async ships => {
       if (!gamePlayerId) {
@@ -76,14 +82,42 @@ function GameViewPage() {
     [gamePlayerId, loadGameView]
   );
 
+  const postSalvo = useCallback(
+    async locations => {
+      if (!gamePlayerId) {
+        throw new Error("Missing game player id.");
+      }
+
+      const turn = getCurrentTurn(data, gamePlayerId);
+      const response = await fetch(`/api/games/players/${gamePlayerId}/salvos`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ turn, locations })
+      });
+
+      if (response.status !== 201) {
+        const payload = await response.json().catch(() => ({}));
+        const message = payload.error || `Request failed: ${response.status}`;
+        throw new Error(message);
+      }
+
+      await loadGameView();
+      return true;
+    },
+    [data, gamePlayerId, loadGameView]
+  );
+
   useEffect(() => {
     window.salvo = {
-      postShips
+      postShips,
+      postSalvo
     };
     return () => {
       delete window.salvo;
     };
-  }, [postShips]);
+  }, [postShips, postSalvo]);
 
   const placedShipTypes = useMemo(
     () => new Set(placementShips.map(ship => ship.type)),
@@ -180,6 +214,44 @@ function GameViewPage() {
 
   const shipLocations = useMemo(() => new Set(getShipLocations(data)), [data]);
   const { playerTurns, opponentTurns } = useMemo(() => getSalvoMaps(data), [data]);
+  const currentTurn = useMemo(() => getCurrentTurn(data, gamePlayerId), [data, gamePlayerId]);
+  const firedCells = useMemo(() => new Set(playerTurns.keys()), [playerTurns]);
+  const selectedSalvoSet = useMemo(() => new Set(selectedSalvoCells), [selectedSalvoCells]);
+
+  function toggleSalvoCell(cellId) {
+    if (firedCells.has(cellId)) {
+      return;
+    }
+
+    setSelectedSalvoCells(current => {
+      if (current.includes(cellId)) {
+        return current.filter(cell => cell !== cellId);
+      }
+      if (current.length >= MAX_SALVO_SHOTS) {
+        return current;
+      }
+      return [...current, cellId];
+    });
+  }
+
+  async function handleSubmitSalvo() {
+    if (selectedSalvoCells.length === 0) {
+      return;
+    }
+
+    setStatus("Submitting salvo...");
+    try {
+      await postSalvo(selectedSalvoCells);
+      setSelectedSalvoCells([]);
+      setStatus("Salvo submitted. Game view refreshed.");
+      setError("");
+    } catch (err) {
+      const message = err.message || "Failed to post salvo.";
+      setStatus("");
+      setError(message);
+      window.alert(message);
+    }
+  }
 
   return (
     <>
@@ -299,14 +371,37 @@ function GameViewPage() {
                         <span>
                           <i style={{ background: "var(--salvo)" }} /> Fired
                         </span>
+                        <span>
+                          <i style={{ background: "var(--accent)" }} /> Selected for next salvo
+                        </span>
                       </div>
                     }
-                    renderCell={cellId => {
-                      const turn = playerTurns.get(cellId);
-                      if (turn === undefined) return { className: "cell", label: "" };
-                      return { className: "cell salvo", label: String(turn) };
-                    }}
-                  />
+                  >
+                    <p className="notice">
+                      Current turn: <strong>{currentTurn}</strong>
+                    </p>
+                    <p className="notice">
+                      Selected shots: {selectedSalvoCells.length}/{MAX_SALVO_SHOTS}
+                    </p>
+                    {selectedSalvoCells.length >= MAX_SALVO_SHOTS ? (
+                      <p className="notice">Maximum shots selected for this turn.</p>
+                    ) : null}
+                    <SalvoTargetGrid
+                      playerTurns={playerTurns}
+                      selectedSalvoSet={selectedSalvoSet}
+                      onCellClick={toggleSalvoCell}
+                    />
+                    <div className="salvo-actions">
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={selectedSalvoCells.length === 0}
+                        onClick={handleSubmitSalvo}
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </GridCard>
                 </div>
               )}
             </>
@@ -407,6 +502,56 @@ function PlacementGrid({ occupiedCells, startCell, possibleEnds, onCellClick }) 
   );
 }
 
+function SalvoTargetGrid({ playerTurns, selectedSalvoSet, onCellClick }) {
+  return (
+    <table className="grid salvo-target-grid">
+      <thead>
+        <tr>
+          <th></th>
+          {cols.map(col => (
+            <th key={col}>{col}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(row => (
+          <tr key={row}>
+            <th>{row}</th>
+            {cols.map(col => {
+              const cellId = `${row}${col}`;
+              const turn = playerTurns.get(cellId);
+              const classNames = ["cell"];
+              let label = "";
+              let isLocked = false;
+
+              if (turn !== undefined) {
+                classNames.push("salvo", "locked");
+                label = String(turn);
+                isLocked = true;
+              } else if (selectedSalvoSet.has(cellId)) {
+                classNames.push("salvo-selected");
+                label = "X";
+              } else {
+                classNames.push("targetable");
+              }
+
+              return (
+                <td
+                  key={cellId}
+                  className={classNames.join(" ")}
+                  onClick={isLocked ? undefined : () => onCellClick(cellId)}
+                >
+                  {label}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function getGamePlayerId() {
   const params = new URLSearchParams(window.location.search);
   const raw = params.get("gp");
@@ -454,6 +599,25 @@ function getSalvoMaps(data) {
     });
   });
   return { playerTurns, opponentTurns };
+}
+
+function getCurrentTurn(data, gamePlayerId) {
+  if (!data || typeof data.salvoes !== "object" || data.salvoes === null) {
+    return 1;
+  }
+
+  const ownTurns = Object.keys(data.salvoes[String(gamePlayerId)] || {}).filter(
+    key => Number.isFinite(Number(key))
+  );
+  const opponentTurnCounts = Object.entries(data.salvoes)
+    .filter(([gpId]) => Number(gpId) !== gamePlayerId)
+    .map(([, salvoesByTurn]) =>
+      Object.keys(salvoesByTurn || {}).filter(key => Number.isFinite(Number(key))).length
+    );
+
+  const ownCount = ownTurns.length;
+  const opponentCount = opponentTurnCounts.length > 0 ? Math.max(...opponentTurnCounts) : 0;
+  return Math.min(ownCount, opponentCount) + 1;
 }
 
 function buildLocationTurnMap(salvoesByTurn) {

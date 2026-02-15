@@ -452,6 +452,24 @@ a:hover {
   cursor: pointer;
 }
 
+.salvo-target-grid td.targetable {
+  cursor: pointer;
+}
+
+.salvo-target-grid td.locked {
+  cursor: not-allowed;
+}
+
+.cell.salvo-selected {
+  background: var(--accent);
+  color: var(--surface);
+  font-weight: 700;
+}
+
+.salvo-actions {
+  margin-top: 12px;
+}
+
 .cell.placement-start {
   background: var(--accent);
   color: var(--surface);

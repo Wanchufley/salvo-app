@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,6 +43,9 @@ public class SalvoController {
 
 	@Autowired
 	private ShipRepository shipRepository;
+
+	@Autowired
+	private SalvoRepository salvoRepository;
 
 	@Autowired
 	private PasswordEncoder passwordEncoder;
@@ -276,6 +280,63 @@ public class SalvoController {
 		shipRepository.saveAll(gamePlayer.getShips());
 
 		return ResponseEntity.status(HttpStatus.CREATED).build();
+	}
+
+	@PostMapping("/games/players/{gamePlayerId}/salvos")
+	public ResponseEntity<Map<String, Object>> placeSalvo(
+		@PathVariable long gamePlayerId,
+		@RequestBody Salvo salvoRequest,
+		Authentication authentication
+	) {
+		if (authentication == null || !authentication.isAuthenticated()) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+				.body(Map.of("error", "Unauthorized"));
+		}
+
+		Optional<GamePlayer> gamePlayerOptional = gamePlayerRepository.findById(gamePlayerId);
+		if (gamePlayerOptional.isEmpty()) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+				.body(Map.of("error", "Unauthorized"));
+		}
+
+		GamePlayer gamePlayer = gamePlayerOptional.get();
+		Player currentPlayer = playerRepository.findByUserName(authentication.getName());
+		if (currentPlayer == null || gamePlayer.getPlayer().getId() != currentPlayer.getId()) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+				.body(Map.of("error", "Unauthorized"));
+		}
+
+		int turn = calculateCurrentTurn(gamePlayer);
+		List<String> locations = salvoRequest.getLocations() == null
+			? List.of()
+			: new ArrayList<>(salvoRequest.getLocations());
+		Optional<Salvo> existingTurnSalvo = gamePlayer.getSalvoes().stream()
+			.filter(existingSalvo -> existingSalvo.getTurn() == turn)
+			.findFirst();
+
+		if (existingTurnSalvo.isPresent()) {
+			Salvo existingSalvo = existingTurnSalvo.get();
+			existingSalvo.setLocations(locations);
+			salvoRepository.save(existingSalvo);
+		} else {
+			Salvo salvo = new Salvo();
+			salvo.setTurn(turn);
+			salvo.setLocations(locations);
+			gamePlayer.addSalvo(salvo);
+			salvoRepository.save(salvo);
+		}
+
+		return ResponseEntity.status(HttpStatus.CREATED).build();
+	}
+
+	private int calculateCurrentTurn(GamePlayer gamePlayer) {
+		int ownTurnCount = gamePlayer.getSalvoes().size();
+		int opponentTurnCount = gamePlayer.getGame().getGamePlayers().stream()
+			.filter(otherGamePlayer -> otherGamePlayer.getId() != gamePlayer.getId())
+			.mapToInt(otherGamePlayer -> otherGamePlayer.getSalvoes().size())
+			.max()
+			.orElse(0);
+		return Math.min(ownTurnCount, opponentTurnCount) + 1;
 	}
 
 	private Map<String, Object> makeGameDTO(Game game) {
