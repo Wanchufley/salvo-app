@@ -41,6 +41,9 @@ public class SalvoController {
 	private PlayerRepository playerRepository;
 
 	@Autowired
+	private ShipRepository shipRepository;
+
+	@Autowired
 	private PasswordEncoder passwordEncoder;
 
 	@Autowired
@@ -236,6 +239,43 @@ public class SalvoController {
 		}
 
 		return ResponseEntity.ok(makeGameViewDTO(gamePlayer));
+	}
+
+	@PostMapping("/games/players/{gamePlayerId}/ships")
+	public ResponseEntity<Map<String, Object>> placeShips(
+		@PathVariable long gamePlayerId,
+		@RequestBody List<Ship> ships,
+		Authentication authentication
+	) {
+		if (authentication == null || !authentication.isAuthenticated()) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+				.body(Map.of("error", "Unauthorized"));
+		}
+
+		Optional<GamePlayer> gamePlayerOptional = gamePlayerRepository.findById(gamePlayerId);
+		if (gamePlayerOptional.isEmpty()) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+				.body(Map.of("error", "Unauthorized"));
+		}
+
+		GamePlayer gamePlayer = gamePlayerOptional.get();
+		Player currentPlayer = playerRepository.findByUserName(authentication.getName());
+		if (currentPlayer == null || gamePlayer.getPlayer().getId() != currentPlayer.getId()) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+				.body(Map.of("error", "Unauthorized"));
+		}
+
+		if (!gamePlayer.getShips().isEmpty()) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN)
+				.body(Map.of("error", "Ships already placed"));
+		}
+
+		for (Ship ship : ships) {
+			gamePlayer.addShip(ship);
+		}
+		shipRepository.saveAll(gamePlayer.getShips());
+
+		return ResponseEntity.status(HttpStatus.CREATED).build();
 	}
 
 	private Map<String, Object> makeGameDTO(Game game) {

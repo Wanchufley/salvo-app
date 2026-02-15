@@ -222,18 +222,21 @@ a:hover {
 }
 
 .grid {
-  width: 100%;
+  width: max-content;
   border-collapse: collapse;
   border: 1px solid var(--border);
   overflow: hidden;
   border-radius: 12px;
+  table-layout: fixed;
+  margin: 0 auto;
 }
 
 .grid th,
 .grid td {
   border: 1px solid var(--border);
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
   text-align: center;
   font-size: 13px;
   padding: 0;
@@ -398,9 +401,67 @@ a:hover {
   background: var(--accent-strong);
 }
 
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .notice {
   font-size: 14px;
   color: var(--muted);
+}
+
+.ship-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ship-chip {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ship-chip.selected {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--surface) 88%);
+}
+
+.ship-chip.placed {
+  background: color-mix(in srgb, var(--ship), var(--surface) 80%);
+  border-color: color-mix(in srgb, var(--ship), var(--border) 35%);
+}
+
+.ship-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.placement-grid-section {
+  margin-top: 18px;
+}
+
+.placement-grid td {
+  cursor: pointer;
+}
+
+.cell.placement-start {
+  background: var(--accent);
+  color: var(--surface);
+  font-weight: 700;
+}
+
+.cell.placement-option {
+  background: color-mix(in srgb, var(--salvo), var(--surface) 25%);
+  color: var(--surface);
+  font-weight: 700;
 }
 
 @media (max-width: 720px) {

@@ -1,5 +1,6 @@
 package com.codeoftheweb.salvo;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import java.util.ArrayList;
 import java.util.List;
 import jakarta.persistence.CollectionTable;
@@ -20,6 +21,7 @@ public class Ship {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private long id;
 
+    @JsonAlias("type")
     private String shipType;
 
     @ManyToOne
