@@ -6,10 +6,12 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -350,13 +352,16 @@ public class SalvoController {
 
 	private Map<String, Object> makeGameViewDTO(GamePlayer gamePlayer) {
 		Map<String, Object> dto = new LinkedHashMap<>();
-		Game game = gamePlayer.getGame();
+		Game game = gameRepository.findById(gamePlayer.getGame().getId())
+			.orElse(gamePlayer.getGame());
+		List<GamePlayer> gamePlayers = getGamePlayersForGame(game.getId());
 		dto.put("gameId", game.getId());
 		dto.put("gamePlayerId", gamePlayer.getId());
 		dto.put("created", game.getCreationDate());
-		dto.put("gamePlayers", game.getGamePlayers().stream().map(this::makeGamePlayerDTO).toList());
+		dto.put("gamePlayers", gamePlayers.stream().map(this::makeGamePlayerDTO).toList());
 		dto.put("ships", gamePlayer.getShips().stream().map(this::makeShipDTO).toList());
-		dto.put("salvoes", makeSalvoesDTO(game));
+		dto.put("salvoes", makeSalvoesDTO(gamePlayers));
+		dto.put("hits", makeHitsHistoryDTO(gamePlayer, gamePlayers));
 		return dto;
 	}
 
@@ -374,9 +379,9 @@ public class SalvoController {
 		return dto;
 	}
 
-	private Map<Long, Map<Integer, List<String>>> makeSalvoesDTO(Game game) {
+	private Map<Long, Map<Integer, List<String>>> makeSalvoesDTO(List<GamePlayer> gamePlayers) {
 		Map<Long, Map<Integer, List<String>>> salvoesByPlayer = new LinkedHashMap<>();
-		for (GamePlayer gamePlayer : game.getGamePlayers()) {
+		for (GamePlayer gamePlayer : gamePlayers) {
 			Map<Integer, List<String>> salvoesByTurn = new LinkedHashMap<>();
 			gamePlayer.getSalvoes().stream()
 				.sorted(Comparator.comparingInt(Salvo::getTurn))
@@ -384,6 +389,104 @@ public class SalvoController {
 			salvoesByPlayer.put(gamePlayer.getId(), salvoesByTurn);
 		}
 		return salvoesByPlayer;
+	}
+
+	private Map<Integer, Map<String, Object>> makeHitsHistoryDTO(
+		GamePlayer currentGamePlayer,
+		List<GamePlayer> gamePlayers
+	) {
+		Map<Integer, Map<String, Object>> history = new LinkedHashMap<>();
+		GamePlayer opponent = gamePlayers.stream()
+			.filter(gamePlayer -> gamePlayer.getId() != currentGamePlayer.getId())
+			.findFirst()
+			.orElse(null);
+
+		if (opponent == null) {
+			return history;
+		}
+
+		int maxTurn = Math.max(getMaxTurn(currentGamePlayer), getMaxTurn(opponent));
+		for (int turn = 1; turn <= maxTurn; turn++) {
+			Map<String, Object> turnHistory = new LinkedHashMap<>();
+			turnHistory.put("self", makeTurnDamageDTO(currentGamePlayer, opponent, turn));
+			turnHistory.put("opponent", makeTurnDamageDTO(opponent, currentGamePlayer, turn));
+			history.put(turn, turnHistory);
+		}
+
+		return history;
+	}
+
+	private List<GamePlayer> getGamePlayersForGame(long gameId) {
+		return gamePlayerRepository.findAll().stream()
+			.filter(gamePlayer -> gamePlayer.getGame() != null && gamePlayer.getGame().getId() == gameId)
+			.sorted(Comparator.comparingLong(GamePlayer::getId))
+			.toList();
+	}
+
+	private int getMaxTurn(GamePlayer gamePlayer) {
+		return gamePlayer.getSalvoes().stream()
+			.mapToInt(Salvo::getTurn)
+			.max()
+			.orElse(0);
+	}
+
+	private Map<String, Object> makeTurnDamageDTO(
+		GamePlayer attacker,
+		GamePlayer defender,
+		int turn
+	) {
+		Map<String, Object> dto = new LinkedHashMap<>();
+		Set<String> hitLocationsBeforeTurn = getHitLocationsThroughTurn(attacker, defender, turn - 1);
+		Set<String> hitLocationsThroughTurn = getHitLocationsThroughTurn(attacker, defender, turn);
+		Map<String, Integer> hits = new LinkedHashMap<>();
+		List<String> sunk = new ArrayList<>();
+
+		for (Ship ship : defender.getShips().stream()
+			.sorted(Comparator.comparing(Ship::getShipType))
+			.toList()) {
+			int newHits = (int) ship.getLocations().stream()
+				.filter(hitLocationsThroughTurn::contains)
+				.filter(location -> !hitLocationsBeforeTurn.contains(location))
+				.count();
+			if (newHits > 0) {
+				hits.put(ship.getShipType(), newHits);
+			}
+
+			boolean wasSunkBeforeTurn = ship.getLocations().stream().allMatch(hitLocationsBeforeTurn::contains);
+			boolean isSunkAfterTurn = ship.getLocations().stream().allMatch(hitLocationsThroughTurn::contains);
+			if (!wasSunkBeforeTurn && isSunkAfterTurn) {
+				sunk.add(ship.getShipType());
+			}
+		}
+
+		dto.put("hitCount", hits.values().stream().mapToInt(Integer::intValue).sum());
+		dto.put("hits", hits);
+		dto.put("sunk", sunk);
+		dto.put("shipsAfloat", countShipsAfloat(defender, hitLocationsThroughTurn));
+		return dto;
+	}
+
+	private Set<String> getHitLocationsThroughTurn(GamePlayer attacker, GamePlayer defender, int maxTurn) {
+		if (maxTurn <= 0) {
+			return Set.of();
+		}
+
+		Set<String> defenderLocations = defender.getShips().stream()
+			.flatMap(ship -> ship.getLocations().stream())
+			.collect(LinkedHashSet::new, Set::add, Set::addAll);
+
+		return attacker.getSalvoes().stream()
+			.filter(salvo -> salvo.getTurn() <= maxTurn)
+			.sorted(Comparator.comparingInt(Salvo::getTurn))
+			.flatMap(salvo -> salvo.getLocations().stream())
+			.filter(defenderLocations::contains)
+			.collect(LinkedHashSet::new, Set::add, Set::addAll);
+	}
+
+	private int countShipsAfloat(GamePlayer defender, Set<String> hitLocations) {
+		return (int) defender.getShips().stream()
+			.filter(ship -> ship.getLocations().stream().anyMatch(location -> !hitLocations.contains(location)))
+			.count();
 	}
 
 	private Map<String, Object> makeScoreDTO(Score score) {

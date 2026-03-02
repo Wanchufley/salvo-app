@@ -215,6 +215,9 @@ function GameViewPage() {
   const shipLocations = useMemo(() => new Set(getShipLocations(data)), [data]);
   const { playerTurns, opponentTurns } = useMemo(() => getSalvoMaps(data), [data]);
   const currentTurn = useMemo(() => getCurrentTurn(data, gamePlayerId), [data, gamePlayerId]);
+  const turnHistory = useMemo(() => getTurnHistory(data), [data]);
+  const playerTurnOutcomes = useMemo(() => getPlayerTurnOutcomes(turnHistory), [turnHistory]);
+  const latestHistoryTurn = turnHistory.length > 0 ? turnHistory[turnHistory.length - 1].turn : null;
   const firedCells = useMemo(() => new Set(playerTurns.keys()), [playerTurns]);
   const selectedSalvoSet = useMemo(() => new Set(selectedSalvoCells), [selectedSalvoCells]);
 
@@ -326,83 +329,113 @@ function GameViewPage() {
                         </div>
                       }
                     >
-                      <PlacementGrid
-                        occupiedCells={occupiedPlacementCells}
-                        startCell={startCell}
-                        possibleEnds={possibleEndPlacements}
-                        onCellClick={handlePlacementCellClick}
-                      />
+                      <div className="grid-scroll">
+                        <PlacementGrid
+                          occupiedCells={occupiedPlacementCells}
+                          startCell={startCell}
+                          possibleEnds={possibleEndPlacements}
+                          onCellClick={handlePlacementCellClick}
+                        />
+                      </div>
                     </GridCard>
                   </div>
                 </>
               ) : (
-                <div className="grid-wrap">
-                  <GridCard
-                    title="Your fleet"
-                    legend={
-                      <div className="legend">
-                        <span>
-                          <i style={{ background: "var(--ship)" }} /> Ship
-                        </span>
-                        <span>
-                          <i style={{ background: "var(--hit)" }} /> Hit
-                        </span>
-                      </div>
-                    }
-                    renderCell={cellId => {
-                      const hasShip = shipLocations.has(cellId);
-                      const hitTurn = opponentTurns.get(cellId);
-                      const classNames = ["cell"];
-                      if (hasShip && hitTurn !== undefined) {
-                        classNames.push("hit");
-                        return { className: classNames.join(" "), label: String(hitTurn) };
-                      }
-                      if (hasShip) {
-                        classNames.push("ship");
-                        return { className: classNames.join(" "), label: "S" };
-                      }
-                      return { className: classNames.join(" "), label: "" };
-                    }}
-                  />
-                  <GridCard
-                    title="Your salvoes"
-                    legend={
-                      <div className="legend">
-                        <span>
-                          <i style={{ background: "var(--salvo)" }} /> Fired
-                        </span>
-                        <span>
-                          <i style={{ background: "var(--accent)" }} /> Selected for next salvo
-                        </span>
-                      </div>
-                    }
-                  >
-                    <p className="notice">
-                      Current turn: <strong>{currentTurn}</strong>
-                    </p>
-                    <p className="notice">
-                      Selected shots: {selectedSalvoCells.length}/{MAX_SALVO_SHOTS}
-                    </p>
-                    {selectedSalvoCells.length >= MAX_SALVO_SHOTS ? (
-                      <p className="notice">Maximum shots selected for this turn.</p>
-                    ) : null}
-                    <SalvoTargetGrid
-                      playerTurns={playerTurns}
-                      selectedSalvoSet={selectedSalvoSet}
-                      onCellClick={toggleSalvoCell}
-                    />
-                    <div className="salvo-actions">
-                      <button
-                        type="button"
-                        className="button"
-                        disabled={selectedSalvoCells.length === 0}
-                        onClick={handleSubmitSalvo}
+                <>
+                  <div className="battle-shell">
+                    <div className="board-column">
+                      <GridCard
+                        title="Your fleet"
+                        legend={
+                          <div className="legend">
+                            <span>
+                              <i style={{ background: "var(--ship)" }} /> Ship
+                            </span>
+                            <span>
+                              <i style={{ background: "var(--hit)" }} /> Hit
+                            </span>
+                          </div>
+                        }
+                        renderCell={cellId => {
+                          const hasShip = shipLocations.has(cellId);
+                          const hitTurn = opponentTurns.get(cellId);
+                          const classNames = ["cell"];
+                          if (hasShip && hitTurn !== undefined) {
+                            classNames.push("hit");
+                            return { className: classNames.join(" "), label: String(hitTurn) };
+                          }
+                          if (hasShip) {
+                            classNames.push("ship");
+                            return { className: classNames.join(" "), label: "S" };
+                          }
+                          return { className: classNames.join(" "), label: "" };
+                        }}
+                      />
+                      <GridCard
+                        title="Your salvoes"
+                        legend={
+                          <div className="legend">
+                            <span>
+                              <i style={{ background: "var(--salvo)" }} /> Fired
+                            </span>
+                            <span>
+                              <i style={{ background: "var(--hit)" }} /> Turn with hit
+                            </span>
+                            <span>
+                              <i style={{ background: "var(--accent)" }} /> Selected for next salvo
+                            </span>
+                          </div>
+                        }
                       >
-                        Done
-                      </button>
+                        <div className="grid-card-body">
+                          <p className="notice">
+                            Current turn: <strong>{currentTurn}</strong>
+                          </p>
+                          <p className="notice">
+                            Selected shots: {selectedSalvoCells.length}/{MAX_SALVO_SHOTS}
+                          </p>
+                          {selectedSalvoCells.length >= MAX_SALVO_SHOTS ? (
+                            <p className="notice">Maximum shots selected for this turn.</p>
+                          ) : null}
+                          <div className="grid-scroll">
+                            <SalvoTargetGrid
+                              playerTurns={playerTurns}
+                              playerTurnOutcomes={playerTurnOutcomes}
+                              selectedSalvoSet={selectedSalvoSet}
+                              onCellClick={toggleSalvoCell}
+                            />
+                          </div>
+                        </div>
+                        <div className="salvo-actions">
+                          <button
+                            type="button"
+                            className="button"
+                            disabled={selectedSalvoCells.length === 0}
+                            onClick={handleSubmitSalvo}
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </GridCard>
                     </div>
-                  </GridCard>
-                </div>
+                    <GridCard
+                      className="history-card"
+                      title="Battle history"
+                      legend={
+                        latestHistoryTurn != null ? (
+                          <span className="tag">Latest turn {latestHistoryTurn}</span>
+                        ) : null
+                      }
+                    >
+                      <GameHistoryCard
+                        data={data}
+                        gamePlayerId={gamePlayerId}
+                        turnHistory={turnHistory}
+                        latestHistoryTurn={latestHistoryTurn}
+                      />
+                    </GridCard>
+                  </div>
+                </>
               )}
             </>
           ) : (
@@ -414,14 +447,18 @@ function GameViewPage() {
   );
 }
 
-function GridCard({ title, legend, renderCell, children }) {
+function GridCard({ title, legend, renderCell, children, className = "" }) {
   return (
-    <div className="card">
+    <div className={["card", className].filter(Boolean).join(" ")}>
       <div className="card-header">
         <h2>{title}</h2>
       </div>
       {legend}
-      {children || <Grid renderCell={renderCell} />}
+      {children || (
+        <div className="grid-scroll">
+          <Grid renderCell={renderCell} />
+        </div>
+      )}
     </div>
   );
 }
@@ -502,7 +539,7 @@ function PlacementGrid({ occupiedCells, startCell, possibleEnds, onCellClick }) 
   );
 }
 
-function SalvoTargetGrid({ playerTurns, selectedSalvoSet, onCellClick }) {
+function SalvoTargetGrid({ playerTurns, playerTurnOutcomes, selectedSalvoSet, onCellClick }) {
   return (
     <table className="grid salvo-target-grid">
       <thead>
@@ -525,7 +562,13 @@ function SalvoTargetGrid({ playerTurns, selectedSalvoSet, onCellClick }) {
               let isLocked = false;
 
               if (turn !== undefined) {
+                const outcome = playerTurnOutcomes.get(turn);
                 classNames.push("salvo", "locked");
+                if (outcome === "hit") {
+                  classNames.push("salvo-hit");
+                } else if (outcome === "miss") {
+                  classNames.push("salvo-miss");
+                }
                 label = String(turn);
                 isLocked = true;
               } else if (selectedSalvoSet.has(cellId)) {
@@ -549,6 +592,73 @@ function SalvoTargetGrid({ playerTurns, selectedSalvoSet, onCellClick }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+function GameHistoryCard({ data, gamePlayerId, turnHistory, latestHistoryTurn }) {
+  const viewer = data?.gamePlayers?.find(gp => gp.id === gamePlayerId);
+  const opponent = data?.gamePlayers?.find(gp => gp.id !== gamePlayerId);
+  const viewerName = viewer?.player?.email || "You";
+  const opponentName = opponent?.player?.email || "Opponent";
+  const hasAnySalvoes =
+    data &&
+    data.salvoes &&
+    Object.values(data.salvoes).some(
+      salvoesByTurn => Object.keys(salvoesByTurn || {}).length > 0
+    );
+
+  return (
+    <div className="history-card-body">
+      {turnHistory.length === 0 ? (
+        <p className="notice">
+          {hasAnySalvoes
+            ? "Salvoes exist, but no hit history was returned by the server."
+            : "No salvo history yet."}
+        </p>
+      ) : (
+        <div className="history-table-wrap">
+          <table className="table history-table">
+            <thead>
+              <tr>
+                <th>Turn</th>
+                <th>{viewerName}</th>
+                <th>{opponentName}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {turnHistory.map(entry => (
+                <tr
+                  key={entry.turn}
+                  className={entry.turn === latestHistoryTurn ? "history-row-current" : ""}
+                >
+                  <td>
+                    <strong>{entry.turn}</strong>
+                  </td>
+                  <td>{renderTurnSummary(entry.self)}</td>
+                  <td>{renderTurnSummary(entry.opponent)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function renderTurnSummary(summary) {
+  return (
+    <div className="history-summary">
+      <div>
+        <strong>Hits:</strong> {formatHitsSummary(summary)}
+      </div>
+      <div>
+        <strong>Sunk:</strong> {formatSunkSummary(summary)}
+      </div>
+      <div>
+        <strong>Afloat:</strong> {summary?.shipsAfloat ?? 0}
+      </div>
+    </div>
   );
 }
 
@@ -620,6 +730,30 @@ function getCurrentTurn(data, gamePlayerId) {
   return Math.min(ownCount, opponentCount) + 1;
 }
 
+function getTurnHistory(data) {
+  if (!data || typeof data.hits !== "object" || data.hits === null) {
+    return [];
+  }
+
+  return Object.entries(data.hits)
+    .map(([turn, summary]) => ({
+      turn: Number(turn),
+      self: summary?.self || {},
+      opponent: summary?.opponent || {}
+    }))
+    .filter(entry => Number.isFinite(entry.turn))
+    .sort((a, b) => a.turn - b.turn);
+}
+
+function getPlayerTurnOutcomes(turnHistory) {
+  const outcomes = new Map();
+  turnHistory.forEach(entry => {
+    const hitCount = entry?.self?.hitCount ?? 0;
+    outcomes.set(entry.turn, hitCount > 0 ? "hit" : "miss");
+  });
+  return outcomes;
+}
+
 function buildLocationTurnMap(salvoesByTurn) {
   const map = new Map();
   Object.entries(salvoesByTurn || {}).forEach(([turn, locations]) => {
@@ -687,6 +821,26 @@ function cellToCoord(cell) {
 
 function coordToCell(rowIndex, colIndex) {
   return `${rows[rowIndex]}${cols[colIndex]}`;
+}
+
+function formatHitsSummary(summary) {
+  const hits = summary?.hits;
+  const hitCount = summary?.hitCount ?? 0;
+  if (!hits || Object.keys(hits).length === 0 || hitCount === 0) {
+    return "No hits";
+  }
+
+  return Object.entries(hits)
+    .map(([shipType, count]) => `${shipType} x${count}`)
+    .join(", ");
+}
+
+function formatSunkSummary(summary) {
+  const sunk = Array.isArray(summary?.sunk) ? summary.sunk : [];
+  if (sunk.length === 0) {
+    return "None";
+  }
+  return sunk.join(", ");
 }
 
 const root = createRoot(document.getElementById("root"));
