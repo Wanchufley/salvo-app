@@ -7,6 +7,7 @@ import "./styles.css";
 const rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 const cols = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const MAX_SALVO_SHOTS = 5;
+const POLL_INTERVAL_MS = 10_000;
 const SHIP_SPECS = [
   { type: "Aircraft Carrier", length: 5 },
   { type: "Battleship", length: 4 },
@@ -15,11 +16,18 @@ const SHIP_SPECS = [
   { type: "Patrol Boat", length: 2 }
 ];
 
+const WAITING_STATES = new Set([
+  "WAITING_FOR_OPPONENT",
+  "WAITING_FOR_OPPONENT_SHIPS",
+  "WAITING_FOR_OPPONENT_SALVO"
+]);
+
 function GameViewPage() {
   const gamePlayerId = getGamePlayerId();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [pollState, setPollState] = useState("idle");
   const [selectedShipType, setSelectedShipType] = useState(null);
   const [startCell, setStartCell] = useState(null);
   const [placementShips, setPlacementShips] = useState([]);
@@ -40,11 +48,15 @@ function GameViewPage() {
     let active = true;
     loadGameView()
       .then(() => {
-        if (active) setError("");
+        if (active) {
+          setError("");
+          setPollState("synced");
+        }
       })
       .catch(err => {
         if (active) {
           setError(err.message);
+          setPollState("idle");
         }
       });
     return () => {
@@ -53,8 +65,37 @@ function GameViewPage() {
   }, [gamePlayerId, loadGameView]);
 
   useEffect(() => {
+    if (!data?.gameState || !WAITING_STATES.has(data.gameState)) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setPollState("polling");
+      loadGameView().catch(err => {
+        setError(err.message || "Failed to refresh game state.");
+        setPollState("idle");
+      });
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [data?.gameState, loadGameView]);
+
+  useEffect(() => {
     setSelectedSalvoCells([]);
-  }, [data?.gameId, data?.gamePlayerId]);
+    if (!data?.canPlaceShips) {
+      setSelectedShipType(null);
+      setStartCell(null);
+      setPlacementShips([]);
+    }
+  }, [data?.gameId, data?.gamePlayerId, data?.canPlaceShips]);
+
+  useEffect(() => {
+    if (!data?.canFireSalvo) {
+      setSelectedSalvoCells([]);
+    }
+  }, [data?.canFireSalvo, data?.gameState]);
 
   const postShips = useCallback(
     async ships => {
@@ -87,14 +128,16 @@ function GameViewPage() {
       if (!gamePlayerId) {
         throw new Error("Missing game player id.");
       }
+      if (!data?.currentTurn) {
+        throw new Error("Missing current turn.");
+      }
 
-      const turn = getCurrentTurn(data, gamePlayerId);
       const response = await fetch(`/api/games/players/${gamePlayerId}/salvos`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ turn, locations })
+        body: JSON.stringify({ turn: data.currentTurn, locations })
       });
 
       if (response.status !== 201) {
@@ -106,7 +149,7 @@ function GameViewPage() {
       await loadGameView();
       return true;
     },
-    [data, gamePlayerId, loadGameView]
+    [data?.currentTurn, gamePlayerId, loadGameView]
   );
 
   useEffect(() => {
@@ -141,9 +184,14 @@ function GameViewPage() {
     return computePossiblePlacements(startCell, selectedShipSpec.length, occupiedPlacementCells);
   }, [selectedShipSpec, startCell, occupiedPlacementCells]);
 
-  const hasPlacedShipsOnServer = Array.isArray(data?.ships) && data.ships.length > 0;
-  const inPlacementMode = Boolean(data) && !hasPlacedShipsOnServer;
   const allShipsPlaced = placementShips.length === SHIP_SPECS.length;
+  const shipLocations = useMemo(() => new Set(getShipLocations(data)), [data]);
+  const { playerTurns, opponentTurns } = useMemo(() => getSalvoMaps(data), [data]);
+  const turnHistory = useMemo(() => getTurnHistory(data), [data]);
+  const playerTurnOutcomes = useMemo(() => getPlayerTurnOutcomes(turnHistory), [turnHistory]);
+  const latestHistoryTurn = turnHistory.length > 0 ? turnHistory[turnHistory.length - 1].turn : null;
+  const firedCells = useMemo(() => new Set(playerTurns.keys()), [playerTurns]);
+  const selectedSalvoSet = useMemo(() => new Set(selectedSalvoCells), [selectedSalvoCells]);
 
   function selectShip(type) {
     if (placedShipTypes.has(type)) {
@@ -204,7 +252,7 @@ function GameViewPage() {
     setStatus("Submitting ships...");
     try {
       await postShips(placementShips);
-      setStatus("Ships submitted. Game view refreshed.");
+      setStatus("");
       setError("");
     } catch (err) {
       setStatus("");
@@ -212,17 +260,8 @@ function GameViewPage() {
     }
   }
 
-  const shipLocations = useMemo(() => new Set(getShipLocations(data)), [data]);
-  const { playerTurns, opponentTurns } = useMemo(() => getSalvoMaps(data), [data]);
-  const currentTurn = useMemo(() => getCurrentTurn(data, gamePlayerId), [data, gamePlayerId]);
-  const turnHistory = useMemo(() => getTurnHistory(data), [data]);
-  const playerTurnOutcomes = useMemo(() => getPlayerTurnOutcomes(turnHistory), [turnHistory]);
-  const latestHistoryTurn = turnHistory.length > 0 ? turnHistory[turnHistory.length - 1].turn : null;
-  const firedCells = useMemo(() => new Set(playerTurns.keys()), [playerTurns]);
-  const selectedSalvoSet = useMemo(() => new Set(selectedSalvoCells), [selectedSalvoCells]);
-
   function toggleSalvoCell(cellId) {
-    if (firedCells.has(cellId)) {
+    if (!data?.canFireSalvo || firedCells.has(cellId)) {
       return;
     }
 
@@ -238,7 +277,7 @@ function GameViewPage() {
   }
 
   async function handleSubmitSalvo() {
-    if (selectedSalvoCells.length === 0) {
+    if (selectedSalvoCells.length === 0 || !data?.canFireSalvo) {
       return;
     }
 
@@ -246,7 +285,7 @@ function GameViewPage() {
     try {
       await postSalvo(selectedSalvoCells);
       setSelectedSalvoCells([]);
-      setStatus("Salvo submitted. Game view refreshed.");
+      setStatus("");
       setError("");
     } catch (err) {
       const message = err.message || "Failed to post salvo.";
@@ -255,6 +294,10 @@ function GameViewPage() {
       window.alert(message);
     }
   }
+
+  const stateMessage = getGameStateMessage(data?.gameState);
+  const currentTurn = data?.currentTurn ?? 1;
+  const showPollingIndicator = Boolean(data?.gameState && WAITING_STATES.has(data.gameState));
 
   return (
     <>
@@ -271,7 +314,11 @@ function GameViewPage() {
             <p className="notice">{error}</p>
           ) : data ? (
             <>
-              {inPlacementMode ? (
+              <div className="notice game-status-row">
+                <span>{status || stateMessage}</span>
+                {showPollingIndicator ? <PollingIndicator pollState={pollState} /> : null}
+              </div>
+              {data.canPlaceShips ? (
                 <>
                   <section className="card">
                     <div className="card-header">
@@ -301,7 +348,6 @@ function GameViewPage() {
                         );
                       })}
                     </div>
-                    {status ? <p className="notice">{status}</p> : null}
                     <button
                       type="button"
                       className="button"
@@ -341,71 +387,76 @@ function GameViewPage() {
                   </div>
                 </>
               ) : (
-                <>
-                  <div className="battle-shell">
-                    <div className="board-column">
-                      <GridCard
-                        title="Your fleet"
-                        legend={
-                          <div className="legend">
-                            <span>
-                              <i style={{ background: "var(--ship)" }} /> Ship
-                            </span>
-                            <span>
-                              <i style={{ background: "var(--hit)" }} /> Hit
-                            </span>
-                          </div>
-                        }
-                        renderCell={cellId => {
-                          const hasShip = shipLocations.has(cellId);
-                          const hitTurn = opponentTurns.get(cellId);
-                          const classNames = ["cell"];
-                          if (hasShip && hitTurn !== undefined) {
-                            classNames.push("hit");
-                            return { className: classNames.join(" "), label: String(hitTurn) };
-                          }
-                          if (hasShip) {
-                            classNames.push("ship");
-                            return { className: classNames.join(" "), label: "S" };
-                          }
-                          return { className: classNames.join(" "), label: "" };
-                        }}
-                      />
-                      <GridCard
-                        title="Your salvoes"
-                        legend={
-                          <div className="legend">
-                            <span>
-                              <i style={{ background: "var(--salvo)" }} /> Fired
-                            </span>
-                            <span>
-                              <i style={{ background: "var(--hit)" }} /> Turn with hit
-                            </span>
-                            <span>
-                              <i style={{ background: "var(--accent)" }} /> Selected for next salvo
-                            </span>
-                          </div>
-                        }
-                      >
-                        <div className="grid-card-body">
-                          <p className="notice">
-                            Current turn: <strong>{currentTurn}</strong>
-                          </p>
-                          <p className="notice">
-                            Selected shots: {selectedSalvoCells.length}/{MAX_SALVO_SHOTS}
-                          </p>
-                          {selectedSalvoCells.length >= MAX_SALVO_SHOTS ? (
-                            <p className="notice">Maximum shots selected for this turn.</p>
-                          ) : null}
-                          <div className="grid-scroll">
-                            <SalvoTargetGrid
-                              playerTurns={playerTurns}
-                              playerTurnOutcomes={playerTurnOutcomes}
-                              selectedSalvoSet={selectedSalvoSet}
-                              onCellClick={toggleSalvoCell}
-                            />
-                          </div>
+                <div className="battle-shell">
+                  <div className="board-column">
+                    <GridCard
+                      title="Your fleet"
+                      legend={
+                        <div className="legend">
+                          <span>
+                            <i style={{ background: "var(--ship)" }} /> Ship
+                          </span>
+                          <span>
+                            <i style={{ background: "var(--hit)" }} /> Hit
+                          </span>
                         </div>
+                      }
+                      renderCell={cellId => {
+                        const hasShip = shipLocations.has(cellId);
+                        const hitTurn = opponentTurns.get(cellId);
+                        const classNames = ["cell"];
+                        if (hasShip && hitTurn !== undefined) {
+                          classNames.push("hit");
+                          return { className: classNames.join(" "), label: String(hitTurn) };
+                        }
+                        if (hasShip) {
+                          classNames.push("ship");
+                          return { className: classNames.join(" "), label: "S" };
+                        }
+                        return { className: classNames.join(" "), label: "" };
+                      }}
+                    />
+                    <GridCard
+                      title="Your salvoes"
+                      legend={
+                        <div className="legend">
+                          <span>
+                            <i style={{ background: "var(--salvo)" }} /> Fired
+                          </span>
+                          <span>
+                            <i style={{ background: "var(--hit)" }} /> Turn with hit
+                          </span>
+                          <span>
+                            <i style={{ background: "var(--accent)" }} /> Selected for next salvo
+                          </span>
+                        </div>
+                      }
+                    >
+                      <div className="grid-card-body">
+                        <p className="notice">
+                          Current turn: <strong>{currentTurn}</strong>
+                        </p>
+                        {data.canFireSalvo ? (
+                          <>
+                            <p className="notice">
+                              Selected shots: {selectedSalvoCells.length}/{MAX_SALVO_SHOTS}
+                            </p>
+                            {selectedSalvoCells.length >= MAX_SALVO_SHOTS ? (
+                              <p className="notice">Maximum shots selected for this turn.</p>
+                            ) : null}
+                          </>
+                        ) : null}
+                        <div className="grid-scroll">
+                          <SalvoTargetGrid
+                            playerTurns={playerTurns}
+                            playerTurnOutcomes={playerTurnOutcomes}
+                            selectedSalvoSet={selectedSalvoSet}
+                            canSelect={Boolean(data.canFireSalvo)}
+                            onCellClick={toggleSalvoCell}
+                          />
+                        </div>
+                      </div>
+                      {data.canFireSalvo ? (
                         <div className="salvo-actions">
                           <button
                             type="button"
@@ -416,26 +467,26 @@ function GameViewPage() {
                             Done
                           </button>
                         </div>
-                      </GridCard>
-                    </div>
-                    <GridCard
-                      className="history-card"
-                      title="Battle history"
-                      legend={
-                        latestHistoryTurn != null ? (
-                          <span className="tag">Latest turn {latestHistoryTurn}</span>
-                        ) : null
-                      }
-                    >
-                      <GameHistoryCard
-                        data={data}
-                        gamePlayerId={gamePlayerId}
-                        turnHistory={turnHistory}
-                        latestHistoryTurn={latestHistoryTurn}
-                      />
+                      ) : null}
                     </GridCard>
                   </div>
-                </>
+                  <GridCard
+                    className="history-card"
+                    title="Battle history"
+                    legend={
+                      latestHistoryTurn != null ? (
+                        <span className="tag">Latest turn {latestHistoryTurn}</span>
+                      ) : null
+                    }
+                  >
+                    <GameHistoryCard
+                      data={data}
+                      gamePlayerId={gamePlayerId}
+                      turnHistory={turnHistory}
+                      latestHistoryTurn={latestHistoryTurn}
+                    />
+                  </GridCard>
+                </div>
               )}
             </>
           ) : (
@@ -444,6 +495,18 @@ function GameViewPage() {
         </section>
       </AppShell>
     </>
+  );
+}
+
+function PollingIndicator({ pollState }) {
+  const indicatorState = pollState === "polling" ? "polling" : "synced";
+  const label = pollState === "polling" ? "Checking" : "Updated";
+
+  return (
+    <span className="poll-indicator" aria-live="polite">
+      <span className={`poll-dot ${indicatorState}`} aria-hidden="true" />
+      <span>{label}</span>
+    </span>
   );
 }
 
@@ -539,7 +602,13 @@ function PlacementGrid({ occupiedCells, startCell, possibleEnds, onCellClick }) 
   );
 }
 
-function SalvoTargetGrid({ playerTurns, playerTurnOutcomes, selectedSalvoSet, onCellClick }) {
+function SalvoTargetGrid({
+  playerTurns,
+  playerTurnOutcomes,
+  selectedSalvoSet,
+  canSelect,
+  onCellClick
+}) {
   return (
     <table className="grid salvo-target-grid">
       <thead>
@@ -559,7 +628,7 @@ function SalvoTargetGrid({ playerTurns, playerTurnOutcomes, selectedSalvoSet, on
               const turn = playerTurns.get(cellId);
               const classNames = ["cell"];
               let label = "";
-              let isLocked = false;
+              let isLocked = !canSelect;
 
               if (turn !== undefined) {
                 const outcome = playerTurnOutcomes.get(turn);
@@ -574,8 +643,9 @@ function SalvoTargetGrid({ playerTurns, playerTurnOutcomes, selectedSalvoSet, on
               } else if (selectedSalvoSet.has(cellId)) {
                 classNames.push("salvo-selected");
                 label = "X";
-              } else {
+              } else if (canSelect) {
                 classNames.push("targetable");
+                isLocked = false;
               }
 
               return (
@@ -600,21 +670,11 @@ function GameHistoryCard({ data, gamePlayerId, turnHistory, latestHistoryTurn })
   const opponent = data?.gamePlayers?.find(gp => gp.id !== gamePlayerId);
   const viewerName = viewer?.player?.email || "You";
   const opponentName = opponent?.player?.email || "Opponent";
-  const hasAnySalvoes =
-    data &&
-    data.salvoes &&
-    Object.values(data.salvoes).some(
-      salvoesByTurn => Object.keys(salvoesByTurn || {}).length > 0
-    );
 
   return (
     <div className="history-card-body">
       {turnHistory.length === 0 ? (
-        <p className="notice">
-          {hasAnySalvoes
-            ? "Salvoes exist, but no hit history was returned by the server."
-            : "No salvo history yet."}
-        </p>
+        <p className="notice">No completed turn history yet.</p>
       ) : (
         <div className="history-table-wrap">
           <table className="table history-table">
@@ -669,6 +729,31 @@ function getGamePlayerId() {
   return Number.isFinite(id) ? id : null;
 }
 
+function getGameStateMessage(gameState) {
+  switch (gameState) {
+    case "PLACE_SHIPS":
+      return "Place your ships to begin.";
+    case "WAITING_FOR_OPPONENT":
+      return "Waiting for an opponent to join this game.";
+    case "WAITING_FOR_OPPONENT_SHIPS":
+      return "Waiting for your opponent to place ships.";
+    case "STARTING_SOON":
+      return "Starting soon. Both fleets are ready.";
+    case "WAITING_FOR_YOUR_SALVO":
+      return "Your turn. Enter a salvo.";
+    case "WAITING_FOR_OPPONENT_SALVO":
+      return "Waiting for your opponent's salvo. Refreshing automatically.";
+    case "GAME_OVER_WIN":
+      return "Game over. You won.";
+    case "GAME_OVER_LOSS":
+      return "Game over. You lost.";
+    case "GAME_OVER_TIE":
+      return "Game over. It's a tie.";
+    default:
+      return "Loading game state...";
+  }
+}
+
 function formatGameTitle(data, gamePlayerId) {
   if (!data || !Array.isArray(data.gamePlayers)) {
     return "Awaiting game data";
@@ -678,7 +763,7 @@ function formatGameTitle(data, gamePlayerId) {
   const viewerEmail = viewer?.player?.email || "Unknown";
   const opponentEmails = opponents.map(gp => gp.player?.email || "Unknown").join(" vs ");
   if (!opponentEmails) {
-    return `${viewerEmail} (you) - waiting for opponent`;
+    return `${viewerEmail} (you)`;
   }
   return `${viewerEmail} (you) vs ${opponentEmails}`;
 }
@@ -709,25 +794,6 @@ function getSalvoMaps(data) {
     });
   });
   return { playerTurns, opponentTurns };
-}
-
-function getCurrentTurn(data, gamePlayerId) {
-  if (!data || typeof data.salvoes !== "object" || data.salvoes === null) {
-    return 1;
-  }
-
-  const ownTurns = Object.keys(data.salvoes[String(gamePlayerId)] || {}).filter(
-    key => Number.isFinite(Number(key))
-  );
-  const opponentTurnCounts = Object.entries(data.salvoes)
-    .filter(([gpId]) => Number(gpId) !== gamePlayerId)
-    .map(([, salvoesByTurn]) =>
-      Object.keys(salvoesByTurn || {}).filter(key => Number.isFinite(Number(key))).length
-    );
-
-  const ownCount = ownTurns.length;
-  const opponentCount = opponentTurnCounts.length > 0 ? Math.max(...opponentTurnCounts) : 0;
-  return Math.min(ownCount, opponentCount) + 1;
 }
 
 function getTurnHistory(data) {

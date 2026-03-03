@@ -227,9 +227,7 @@ class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
                     "/web/**",
-                    "/assets/**",
-                    "/roster.html",
-                    "/roster.js"
+                    "/assets/**"
                 ).permitAll()
                 .requestMatchers(
                     "/api/login",

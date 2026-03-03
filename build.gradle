@@ -18,6 +18,9 @@ repositories {
 	mavenCentral()
 }
 
+def generatedFrontendAssetsDir = layout.projectDirectory.dir("src/main/resources/static/assets")
+def generatedFrontendPagesDir = layout.projectDirectory.dir("src/main/resources/static/web")
+
 bootRun {
   sourceResources sourceSets.main
 }
@@ -36,4 +39,11 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+tasks.named('clean') {
+	delete generatedFrontendAssetsDir
+	delete fileTree(generatedFrontendPagesDir) {
+		include '*.html'
+	}
 }
