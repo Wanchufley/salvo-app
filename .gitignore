@@ -39,6 +39,7 @@ out/
 
 ### BUILD ARTIFACTS ###
 src/main/resources/static/assets/
+src/main/resources/static/web/
 
 ### LOCAL FILES ###
 salvo-testbed.pdf
