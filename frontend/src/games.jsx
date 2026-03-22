@@ -11,7 +11,7 @@ function GamesPage() {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/games")
+    fetch("/api/games", { cache: "no-store" })
       .then(response => {
         if (!response.ok) {
           throw new Error(`Server error: ${response.status}`);
@@ -150,9 +150,12 @@ function GamesPage() {
         <div className="game-list">
           {games.map(game => {
             const gamePlayers = game.gamePlayers || [];
-            const hasCurrentPlayer =
-              currentPlayerId != null &&
-              gamePlayers.some(gp => gp.player && gp.player.id === currentPlayerId);
+            const hasRecordedScores = Array.isArray(game.scores) && game.scores.length > 0;
+            const currentPlayerGamePlayer =
+              currentPlayerId != null
+                ? gamePlayers.find(gp => gp.player && gp.player.id === currentPlayerId) || null
+                : null;
+            const hasCurrentPlayer = currentPlayerGamePlayer != null;
 
             const canJoin =
               currentPlayerId != null &&
@@ -161,10 +164,35 @@ function GamesPage() {
 
             return (
               <article key={game.id} className="game-row">
-                <strong>Game {game.id}</strong>
-                <div className="game-meta">
-                  <span>{formatDate(game.created)}</span>
-                  <span>{gamePlayers.length} players</span>
+                <div className="game-row-top">
+                  <div>
+                    <strong>Game {game.id}</strong>
+                    <div className="game-meta">
+                      <span>{formatDate(game.created)}</span>
+                      <span>{gamePlayers.length} players</span>
+                    </div>
+                  </div>
+                  {canJoin ? (
+                    <div className="game-actions">
+                      <button
+                        type="button"
+                        className="button"
+                        onClick={() => handleJoinGame(game.id)}
+                      >
+                        Join Game
+                      </button>
+                    </div>
+                  ) : null}
+                  {currentPlayerGamePlayer ? (
+                    <div className="game-actions">
+                      <a
+                        className="button"
+                        href={`/web/game.html?gp=${currentPlayerGamePlayer.id}`}
+                      >
+                        {hasRecordedScores ? "View Results" : "Continue Game"}
+                      </a>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="game-players">
                   {gamePlayers.map(gp => {
@@ -177,15 +205,7 @@ function GamesPage() {
                       player.id === currentPlayerId;
 
                     if (isCurrentPlayer) {
-                      return (
-                        <a
-                          key={gp.id}
-                          className="link-button"
-                          href={`/web/game.html?gp=${gp.id}`}
-                        >
-                          {label} (you)
-                        </a>
-                      );
+                      return <span key={gp.id} className="player-label">{label} (you)</span>;
                     }
 
                     return (
@@ -195,17 +215,6 @@ function GamesPage() {
                     );
                   })}
                 </div>
-                {canJoin ? (
-                  <div className="game-actions">
-                    <button
-                      type="button"
-                      className="button"
-                      onClick={() => handleJoinGame(game.id)}
-                    >
-                      Join Game
-                    </button>
-                  </div>
-                ) : null}
               </article>
             );
           })}

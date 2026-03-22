@@ -25,7 +25,7 @@ export function AppShell({ title, subtitle, children }) {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/player")
+    fetch("/api/player", { cache: "no-store" })
       .then(response => {
         if (!response.ok) {
           throw new Error(`Server error: ${response.status}`);

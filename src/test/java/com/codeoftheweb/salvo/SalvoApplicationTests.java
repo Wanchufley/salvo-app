@@ -24,8 +24,16 @@ class SalvoApplicationTests {
 
 	@Test
 	void gameViewIncludesTurnByTurnHitHistoryAndShipsAfloat() throws Exception {
-		mockMvc.perform(get("/api/game_view/1").with(user("j.bauer@ctu.gov").roles("USER")))
-			.andExpect(status().isOk())
+			mockMvc.perform(get("/api/game_view/1").with(user("j.bauer@ctu.gov").roles("USER")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.salvoCellStates.self.B5").value("hit"))
+				.andExpect(jsonPath("$.salvoCellStates.self.C5").value("hit"))
+				.andExpect(jsonPath("$.salvoCellStates.self.F1").value("hit"))
+				.andExpect(jsonPath("$.salvoCellStates.self.F2").value("sunk"))
+				.andExpect(jsonPath("$.salvoCellStates.self.D5").value("sunk"))
+				.andExpect(jsonPath("$.salvoCellStates.opponent.B4").value("sunk"))
+				.andExpect(jsonPath("$.salvoCellStates.opponent.B5").value("sunk"))
+				.andExpect(jsonPath("$.salvoCellStates.opponent.B6").value("miss"))
 			.andExpect(jsonPath("$.hits['1'].self.hitCount").value(3))
 			.andExpect(jsonPath("$.hits['1'].self.hits.Destroyer").value(2))
 			.andExpect(jsonPath("$.hits['1'].self.hits['Patrol Boat']").value(1))

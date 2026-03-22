@@ -75,6 +75,9 @@ public class SalvoController {
 	@Autowired
 	private ObjectMapper objectMapper;
 
+	@Autowired
+	private FirebaseRealtimeSyncService firebaseRealtimeSyncService;
+
 	private final HttpSessionSecurityContextRepository securityContextRepository =
 		new HttpSessionSecurityContextRepository();
 
@@ -112,6 +115,7 @@ public class SalvoController {
 
 		GamePlayer gamePlayer = new GamePlayer(game, player);
 		gamePlayerRepository.save(gamePlayer);
+		firebaseRealtimeSyncService.publishGameChange(game, "GAME_CREATED", gamePlayer.getId());
 
 		return ResponseEntity.status(HttpStatus.CREATED)
 			.body(Map.of("gpid", gamePlayer.getId()));
@@ -146,6 +150,7 @@ public class SalvoController {
 
 		GamePlayer gamePlayer = new GamePlayer(game, player);
 		gamePlayerRepository.save(gamePlayer);
+		firebaseRealtimeSyncService.publishGameChange(game, "PLAYER_JOINED", gamePlayer.getId());
 
 		return ResponseEntity.status(HttpStatus.CREATED)
 			.body(Map.of("gpid", gamePlayer.getId()));
@@ -278,6 +283,7 @@ public class SalvoController {
 			gamePlayer.addShip(ship);
 		}
 		shipRepository.saveAll(gamePlayer.getShips());
+		firebaseRealtimeSyncService.publishGameChange(gamePlayer.getGame(), "SHIPS_PLACED", gamePlayer.getId());
 
 		return ResponseEntity.status(HttpStatus.CREATED).build();
 	}
@@ -349,6 +355,7 @@ public class SalvoController {
 		salvoRepository.save(salvo);
 
 		ensureScoresRecorded(game);
+		firebaseRealtimeSyncService.publishGameChange(game, "SALVO_PLACED", gamePlayer.getId());
 		return ResponseEntity.status(HttpStatus.CREATED).build();
 	}
 
@@ -374,10 +381,12 @@ public class SalvoController {
 		dto.put("gamePlayers", gamePlayers.stream().map(this::makeGamePlayerDTO).toList());
 		dto.put("ships", currentGamePlayer.getShips().stream().map(this::makeShipDTO).toList());
 		dto.put("salvoes", makeVisibleSalvoesDTO(currentGamePlayer, gamePlayers));
+		dto.put("salvoCellStates", makeSalvoCellStatesDTO(currentGamePlayer, gamePlayers));
 		dto.put("hits", makeHitsHistoryDTO(currentGamePlayer, gamePlayers));
 		dto.put("scores", game.getScores().stream().map(this::makeScoreDTO).toList());
 		dto.put("gameState", gameState);
 		dto.put("currentTurn", calculateCurrentTurn(currentGamePlayer));
+		dto.put("liveSyncUrl", firebaseRealtimeSyncService.getGameStreamUrl(game.getId()));
 		dto.put("canPlaceShips", GAME_STATE_PLACE_SHIPS.equals(gameState));
 		dto.put(
 			"canFireSalvo",
@@ -442,6 +451,25 @@ public class SalvoController {
 		return history;
 	}
 
+	private Map<String, Map<String, String>> makeSalvoCellStatesDTO(
+		GamePlayer currentGamePlayer,
+		List<GamePlayer> gamePlayers
+	) {
+		GamePlayer opponent = getOpponent(currentGamePlayer, gamePlayers);
+		Map<String, String> selfStates = new LinkedHashMap<>();
+		Map<String, String> opponentStates = new LinkedHashMap<>();
+
+		if (opponent != null) {
+			selfStates.putAll(makeShotOutcomeMap(currentGamePlayer, opponent, currentGamePlayer.getSalvoes().size()));
+			opponentStates.putAll(makeShotOutcomeMap(opponent, currentGamePlayer, currentGamePlayer.getSalvoes().size()));
+		}
+
+		Map<String, Map<String, String>> dto = new LinkedHashMap<>();
+		dto.put("self", selfStates);
+		dto.put("opponent", opponentStates);
+		return dto;
+	}
+
 	private Map<String, Object> makeTurnDamageDTO(
 		GamePlayer attacker,
 		GamePlayer defender,
@@ -478,6 +506,29 @@ public class SalvoController {
 		return dto;
 	}
 
+	private Map<String, String> makeShotOutcomeMap(GamePlayer attacker, GamePlayer defender, int visibleTurnCount) {
+		Map<String, String> outcomes = new LinkedHashMap<>();
+
+		attacker.getSalvoes().stream()
+			.filter(salvo -> salvo.getTurn() <= visibleTurnCount)
+			.sorted(Comparator.comparingInt(Salvo::getTurn))
+			.forEach(salvo -> {
+				Set<String> hitLocationsThroughTurn = getHitLocationsThroughTurn(attacker, defender, salvo.getTurn());
+				for (String location : salvo.getLocations()) {
+					Ship hitShip = findShipAtLocation(defender, location);
+					if (hitShip == null) {
+						outcomes.put(location, "miss");
+					} else if (hitShip.getLocations().stream().allMatch(hitLocationsThroughTurn::contains)) {
+						outcomes.put(location, "sunk");
+					} else {
+						outcomes.put(location, "hit");
+					}
+				}
+			});
+
+		return outcomes;
+	}
+
 	private Set<String> getHitLocationsThroughTurn(GamePlayer attacker, GamePlayer defender, int maxTurn) {
 		if (maxTurn <= 0) {
 			return Set.of();
@@ -499,6 +550,13 @@ public class SalvoController {
 		return (int) defender.getShips().stream()
 			.filter(ship -> ship.getLocations().stream().anyMatch(location -> !hitLocations.contains(location)))
 			.count();
+	}
+
+	private Ship findShipAtLocation(GamePlayer defender, String location) {
+		return defender.getShips().stream()
+			.filter(ship -> ship.getLocations().contains(location))
+			.findFirst()
+			.orElse(null);
 	}
 
 	private Map<String, Object> makeScoreDTO(Score score) {
@@ -647,6 +705,7 @@ public class SalvoController {
 			new Score(game, first.getPlayer(), getScoreValue(firstResult), finishDate),
 			new Score(game, second.getPlayer(), getScoreValue(secondResult), finishDate)
 		));
+		firebaseRealtimeSyncService.publishGameChange(game, "GAME_FINISHED", null);
 	}
 
 	private double getScoreValue(GameResult result) {

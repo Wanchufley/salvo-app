@@ -4,11 +4,14 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
 import static org.springframework.security.config.Customizer.withDefaults;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -25,6 +28,8 @@ import org.springframework.security.web.SecurityFilterChain;
 @SpringBootApplication
 public class SalvoApplication {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(SalvoApplication.class);
+
     public static void main(String[] args) {
         SpringApplication.run(SalvoApplication.class, args);
     }
@@ -36,8 +41,19 @@ public class SalvoApplication {
                                       ShipRepository shipRepository,
                                       SalvoRepository salvoRepository,
                                       ScoreRepository scoreRepository,
-                                      PasswordEncoder passwordEncoder) {
+                                      PasswordEncoder passwordEncoder,
+                                      @Value("${APP_SEED_DEMO_DATA:false}") boolean seedDemoData) {
         return (args) -> {
+            if (!seedDemoData) {
+                LOGGER.info("Demo data seeding is disabled.");
+                return;
+            }
+
+            if (playerRepository.count() > 0) {
+                LOGGER.info("Skipping demo data seeding because the database already contains players.");
+                return;
+            }
+
             Player player1 = playerRepository.save(new Player("j.bauer@ctu.gov", passwordEncoder.encode("24")));
             Player player2 = playerRepository.save(new Player("c.obrian@ctu.gov", passwordEncoder.encode("42")));
             Player player3 = playerRepository.save(new Player("kim_bauer@gmail.com", passwordEncoder.encode("kb")));
@@ -164,6 +180,7 @@ public class SalvoApplication {
             addScore(game4, player1, 0.5, scores);
 
             scoreRepository.saveAll(scores);
+            LOGGER.info("Demo data seeded successfully.");
         };
     }
 

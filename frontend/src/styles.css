@@ -319,6 +319,11 @@ a:hover {
   background: var(--salvo);
   color: var(--surface);
   font-weight: 700;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--surface), transparent 60%);
+}
+
+.cell.salvo-pending {
+  background: color-mix(in srgb, var(--salvo), var(--surface) 8%);
 }
 
 .cell.salvo-hit {
@@ -326,13 +331,29 @@ a:hover {
 }
 
 .cell.salvo-miss {
-  background: color-mix(in srgb, var(--salvo), var(--surface) 12%);
+  background:
+    radial-gradient(circle at center, var(--surface) 0 11%, transparent 13%),
+    color-mix(in srgb, var(--salvo), var(--surface) 18%);
+}
+
+.cell.sunk,
+.cell.salvo-sunk {
+  background: linear-gradient(135deg, var(--hit), #8a1f19);
+  color: var(--surface);
+  font-weight: 700;
 }
 
 .cell.hit {
   background: var(--hit);
   color: var(--surface);
   font-weight: 700;
+}
+
+.cell.miss {
+  background:
+    radial-gradient(circle at center, var(--salvo) 0 10%, transparent 12%),
+    color-mix(in srgb, var(--surface-strong), var(--surface) 55%);
+  color: var(--salvo);
 }
 
 .legend {
@@ -436,6 +457,14 @@ a:hover {
   background: var(--surface-strong);
 }
 
+.game-row-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .game-meta {
   display: flex;
   flex-wrap: wrap;
@@ -467,6 +496,18 @@ a:hover {
   color: var(--accent);
 }
 
+.player-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .form {
   display: grid;
   gap: 12px;
@@ -482,12 +523,20 @@ a:hover {
 }
 
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 10px 16px;
+  font: inherit;
   border: none;
   border-radius: 999px;
   background: var(--accent);
   color: var(--surface);
   font-weight: 700;
+  font-size: 14px;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -503,6 +552,24 @@ a:hover {
 .notice {
   font-size: 14px;
   color: var(--muted);
+}
+
+.salvo-selection-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inline-status-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent), var(--surface) 88%);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .game-status-row {
@@ -537,6 +604,24 @@ a:hover {
 
 .poll-dot.synced {
   background: #3e9b54;
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.legend-swatch.miss {
+  background:
+    radial-gradient(circle at center, var(--surface) 0 24%, transparent 26%),
+    color-mix(in srgb, var(--salvo), var(--surface) 18%);
+  border: 1px solid color-mix(in srgb, var(--salvo), var(--border) 40%);
+}
+
+.legend-swatch.sunk {
+  background: linear-gradient(135deg, var(--hit), #8a1f19);
 }
 
 @keyframes poll-blink {
@@ -609,6 +694,20 @@ a:hover {
   margin-top: 12px;
 }
 
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.secondary-button:hover {
+  background: color-mix(in srgb, var(--accent), var(--surface) 90%);
+  color: var(--accent);
+}
+
 .cell.placement-start {
   background: var(--accent);
   color: var(--surface);
@@ -675,6 +774,10 @@ a:hover {
 
   .card-header {
     margin-bottom: 14px;
+  }
+
+  .game-row-top {
+    align-items: stretch;
   }
 
   .battle-shell,

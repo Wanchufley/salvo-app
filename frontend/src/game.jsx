@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AppShell } from "./components/AppShell.jsx";
 import { Favicon } from "./components/Favicon.jsx";
@@ -32,10 +32,11 @@ function GameViewPage() {
   const [startCell, setStartCell] = useState(null);
   const [placementShips, setPlacementShips] = useState([]);
   const [selectedSalvoCells, setSelectedSalvoCells] = useState([]);
+  const liveSyncInitializedRef = useRef(false);
 
   const loadGameView = useCallback(async () => {
     if (!gamePlayerId) return;
-    const response = await fetch(`/api/game_view/${gamePlayerId}`);
+    const response = await fetch(`/api/game_view/${gamePlayerId}`, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`Server error: ${response.status}`);
     }
@@ -69,18 +70,91 @@ function GameViewPage() {
       return undefined;
     }
 
-    const timeoutId = window.setTimeout(() => {
+    const intervalId = window.setInterval(() => {
       setPollState("polling");
-      loadGameView().catch(err => {
-        setError(err.message || "Failed to refresh game state.");
-        setPollState("idle");
-      });
+      loadGameView()
+        .then(() => {
+          setError("");
+          setPollState("synced");
+        })
+        .catch(err => {
+          setError(err.message || "Failed to refresh game state.");
+          setPollState("idle");
+        });
     }, POLL_INTERVAL_MS);
 
     return () => {
-      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
     };
   }, [data?.gameState, loadGameView]);
+
+  useEffect(() => {
+    const streamUrl = data?.liveSyncUrl;
+    if (!streamUrl || !data?.gameId) {
+      liveSyncInitializedRef.current = false;
+      return undefined;
+    }
+
+    let active = true;
+    const eventSource = new EventSource(streamUrl);
+
+    function handleRealtimeUpdate(event) {
+      if (!active) {
+        return;
+      }
+
+      if (!liveSyncInitializedRef.current) {
+        liveSyncInitializedRef.current = true;
+        return;
+      }
+
+      const payload = parseFirebaseStreamEvent(event);
+      if (!payload || payload.data == null) {
+        return;
+      }
+
+      setPollState("polling");
+      loadGameView()
+        .then(() => {
+          if (!active) {
+            return;
+          }
+          setError("");
+          setPollState("synced");
+        })
+        .catch(err => {
+          if (!active) {
+            return;
+          }
+          setError(err.message || "Failed to refresh game state.");
+          setPollState("idle");
+        });
+    }
+
+    eventSource.addEventListener("put", handleRealtimeUpdate);
+    eventSource.addEventListener("patch", handleRealtimeUpdate);
+    eventSource.addEventListener("keep-alive", () => {});
+    eventSource.addEventListener("cancel", () => {
+      if (active) {
+        setError("Realtime connection closed.");
+      }
+    });
+    eventSource.addEventListener("auth_revoked", () => {
+      if (active) {
+        setError("Realtime connection lost authorization.");
+      }
+    });
+    eventSource.onerror = () => {
+      if (active) {
+        setPollState("idle");
+      }
+    };
+
+    return () => {
+      active = false;
+      eventSource.close();
+    };
+  }, [data?.gameId, data?.liveSyncUrl, loadGameView]);
 
   useEffect(() => {
     setSelectedSalvoCells([]);
@@ -187,11 +261,15 @@ function GameViewPage() {
   const allShipsPlaced = placementShips.length === SHIP_SPECS.length;
   const shipLocations = useMemo(() => new Set(getShipLocations(data)), [data]);
   const { playerTurns, opponentTurns } = useMemo(() => getSalvoMaps(data), [data]);
+  const { playerShotStates, opponentShotStates } = useMemo(() => getSalvoCellStates(data), [data]);
   const turnHistory = useMemo(() => getTurnHistory(data), [data]);
-  const playerTurnOutcomes = useMemo(() => getPlayerTurnOutcomes(turnHistory), [turnHistory]);
   const latestHistoryTurn = turnHistory.length > 0 ? turnHistory[turnHistory.length - 1].turn : null;
   const firedCells = useMemo(() => new Set(playerTurns.keys()), [playerTurns]);
   const selectedSalvoSet = useMemo(() => new Set(selectedSalvoCells), [selectedSalvoCells]);
+  const playerFleetCellStates = useMemo(
+    () => getPlayerFleetCellStates(data, opponentTurns, opponentShotStates),
+    [data, opponentTurns, opponentShotStates]
+  );
 
   function selectShip(type) {
     if (placedShipTypes.has(type)) {
@@ -397,19 +475,34 @@ function GameViewPage() {
                             <i style={{ background: "var(--ship)" }} /> Ship
                           </span>
                           <span>
+                            <i className="legend-swatch miss" /> Missed shot
+                          </span>
+                          <span>
                             <i style={{ background: "var(--hit)" }} /> Hit
+                          </span>
+                          <span>
+                            <i className="legend-swatch sunk" /> Sunk
                           </span>
                         </div>
                       }
                       renderCell={cellId => {
-                        const hasShip = shipLocations.has(cellId);
-                        const hitTurn = opponentTurns.get(cellId);
                         const classNames = ["cell"];
-                        if (hasShip && hitTurn !== undefined) {
-                          classNames.push("hit");
-                          return { className: classNames.join(" "), label: String(hitTurn) };
+                        const state = playerFleetCellStates.get(cellId);
+                        const hitTurn = opponentTurns.get(cellId);
+
+                        if (state === "sunk") {
+                          classNames.push("sunk");
+                          return { className: classNames.join(" "), label: hitTurn ? String(hitTurn) : "X" };
                         }
-                        if (hasShip) {
+                        if (state === "hit") {
+                          classNames.push("hit");
+                          return { className: classNames.join(" "), label: hitTurn ? String(hitTurn) : "X" };
+                        }
+                        if (state === "miss") {
+                          classNames.push("miss");
+                          return { className: classNames.join(" "), label: "•" };
+                        }
+                        if (shipLocations.has(cellId)) {
                           classNames.push("ship");
                           return { className: classNames.join(" "), label: "S" };
                         }
@@ -424,7 +517,13 @@ function GameViewPage() {
                             <i style={{ background: "var(--salvo)" }} /> Fired
                           </span>
                           <span>
-                            <i style={{ background: "var(--hit)" }} /> Turn with hit
+                            <i className="legend-swatch miss" /> Miss
+                          </span>
+                          <span>
+                            <i style={{ background: "var(--hit)" }} /> Hit
+                          </span>
+                          <span>
+                            <i className="legend-swatch sunk" /> Sunk
                           </span>
                           <span>
                             <i style={{ background: "var(--accent)" }} /> Selected for next salvo
@@ -437,19 +536,19 @@ function GameViewPage() {
                           Current turn: <strong>{currentTurn}</strong>
                         </p>
                         {data.canFireSalvo ? (
-                          <>
-                            <p className="notice">
+                          <p className="notice salvo-selection-status">
+                            <span>
                               Selected shots: {selectedSalvoCells.length}/{MAX_SALVO_SHOTS}
-                            </p>
+                            </span>
                             {selectedSalvoCells.length >= MAX_SALVO_SHOTS ? (
-                              <p className="notice">Maximum shots selected for this turn.</p>
+                              <span className="inline-status-tag">Maximum selected</span>
                             ) : null}
-                          </>
+                          </p>
                         ) : null}
                         <div className="grid-scroll">
                           <SalvoTargetGrid
                             playerTurns={playerTurns}
-                            playerTurnOutcomes={playerTurnOutcomes}
+                            playerShotStates={playerShotStates}
                             selectedSalvoSet={selectedSalvoSet}
                             canSelect={Boolean(data.canFireSalvo)}
                             onCellClick={toggleSalvoCell}
@@ -500,7 +599,7 @@ function GameViewPage() {
 
 function PollingIndicator({ pollState }) {
   const indicatorState = pollState === "polling" ? "polling" : "synced";
-  const label = pollState === "polling" ? "Checking" : "Updated";
+  const label = pollState === "polling" ? "Checking for changes" : "Auto-refresh on";
 
   return (
     <span className="poll-indicator" aria-live="polite">
@@ -604,7 +703,7 @@ function PlacementGrid({ occupiedCells, startCell, possibleEnds, onCellClick }) 
 
 function SalvoTargetGrid({
   playerTurns,
-  playerTurnOutcomes,
+  playerShotStates,
   selectedSalvoSet,
   canSelect,
   onCellClick
@@ -631,12 +730,10 @@ function SalvoTargetGrid({
               let isLocked = !canSelect;
 
               if (turn !== undefined) {
-                const outcome = playerTurnOutcomes.get(turn);
-                classNames.push("salvo", "locked");
-                if (outcome === "hit") {
-                  classNames.push("salvo-hit");
-                } else if (outcome === "miss") {
-                  classNames.push("salvo-miss");
+                const shotState = playerShotStates.get(cellId) || "pending";
+                classNames.push("salvo", "locked", `salvo-${shotState}`);
+                if (shotState === "pending") {
+                  classNames.push("salvo-pending");
                 }
                 label = String(turn);
                 isLocked = true;
@@ -811,13 +908,64 @@ function getTurnHistory(data) {
     .sort((a, b) => a.turn - b.turn);
 }
 
-function getPlayerTurnOutcomes(turnHistory) {
-  const outcomes = new Map();
-  turnHistory.forEach(entry => {
-    const hitCount = entry?.self?.hitCount ?? 0;
-    outcomes.set(entry.turn, hitCount > 0 ? "hit" : "miss");
+function getSalvoCellStates(data) {
+  const self = new Map();
+  const opponent = new Map();
+  const states = data?.salvoCellStates;
+
+  if (states?.self && typeof states.self === "object") {
+    Object.entries(states.self).forEach(([location, state]) => {
+      self.set(location, state);
+    });
+  }
+
+  if (states?.opponent && typeof states.opponent === "object") {
+    Object.entries(states.opponent).forEach(([location, state]) => {
+      opponent.set(location, state);
+    });
+  }
+
+  return { playerShotStates: self, opponentShotStates: opponent };
+}
+
+function parseFirebaseStreamEvent(event) {
+  try {
+    return JSON.parse(event.data);
+  } catch {
+    return null;
+  }
+}
+
+function getPlayerFleetCellStates(data, opponentTurns, opponentShotStates) {
+  const states = new Map(opponentShotStates);
+  const ships = Array.isArray(data?.ships) ? data.ships : [];
+
+  ships.forEach(ship => {
+    const locations = Array.isArray(ship?.locations) ? ship.locations : [];
+    if (locations.length === 0) return;
+
+    const isSunk = locations.every(location => {
+      const state = opponentShotStates.get(location);
+      return state === "hit" || state === "sunk";
+    });
+
+    if (isSunk) {
+      locations.forEach(location => {
+        states.set(location, "sunk");
+      });
+      return;
+    }
+
+    locations.forEach(location => {
+      if (opponentTurns.has(location)) {
+        states.set(location, "hit");
+      } else if (!states.has(location)) {
+        states.set(location, "ship");
+      }
+    });
   });
-  return outcomes;
+
+  return states;
 }
 
 function buildLocationTurnMap(salvoesByTurn) {

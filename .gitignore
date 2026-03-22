@@ -42,6 +42,9 @@ src/main/resources/static/assets/
 src/main/resources/static/web/
 
 ### LOCAL FILES ###
+.env
+.env.*
+!.env.example
 salvo-testbed.pdf
 score-structure.png
 possible-fixes.md
