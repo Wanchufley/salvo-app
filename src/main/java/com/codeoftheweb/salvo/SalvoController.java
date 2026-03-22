@@ -357,7 +357,7 @@ public class SalvoController {
 		dto.put("id", game.getId());
 		dto.put("created", game.getCreationDate());
 		dto.put("gamePlayers", game.getGamePlayers().stream().map(this::makeGamePlayerDTO).toList());
-		dto.put("scores", game.getScores().stream().map(this::makeScoreDTO).toList());
+		dto.put("scores", getScoresForGame(game.getId()).stream().map(this::makeScoreDTO).toList());
 		return dto;
 	}
 
@@ -376,7 +376,7 @@ public class SalvoController {
 		dto.put("salvoes", gameRulesService.makeVisibleSalvoesDTO(currentGamePlayer, gamePlayers));
 		dto.put("salvoCellStates", gameRulesService.makeSalvoCellStatesDTO(currentGamePlayer, gamePlayers));
 		dto.put("hits", gameRulesService.makeHitsHistoryDTO(currentGamePlayer, gamePlayers));
-		dto.put("scores", game.getScores().stream().map(this::makeScoreDTO).toList());
+		dto.put("scores", getScoresForGame(game.getId()).stream().map(this::makeScoreDTO).toList());
 		dto.put("gameState", gameState);
 		dto.put("currentTurn", gameRulesService.calculateCurrentTurn(currentGamePlayer));
 		dto.put("liveSyncUrl", firebaseRealtimeSyncService.getGameStreamUrl(game.getId()));
@@ -432,6 +432,10 @@ public class SalvoController {
 			.filter(gamePlayer -> gamePlayer.getGame() != null && gamePlayer.getGame().getId() == gameId)
 			.sorted(Comparator.comparingLong(GamePlayer::getId))
 			.toList();
+	}
+
+	private List<Score> getScoresForGame(long gameId) {
+		return scoreRepository.findByGame_IdOrderByIdAsc(gameId);
 	}
 
 	private int calculateCurrentTurn(GamePlayer gamePlayer) {

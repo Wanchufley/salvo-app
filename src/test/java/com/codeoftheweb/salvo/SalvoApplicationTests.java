@@ -37,6 +37,9 @@ class SalvoApplicationTests {
 	@Autowired
 	private SalvoRepository salvoRepository;
 
+	@Autowired
+	private ScoreRepository scoreRepository;
+
 	@Test
 	void contextLoads() {
 	}
@@ -654,6 +657,73 @@ class SalvoApplicationTests {
 	}
 
 	@Test
+	void gameViewRecordsWinStateAndCreatesScoresOnce() throws Exception {
+		GamePlayer winner = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer loser = createOpponentForGame(winner.getGame(), "j.bauer@ctu.gov");
+		addShip(winner, "Patrol Boat", "A1", "A2");
+		addShip(loser, "Patrol Boat", "B1", "B2");
+		addSalvo(winner, 1, "B1", "B2");
+		addSalvo(loser, 1, "J10");
+
+		org.junit.jupiter.api.Assertions.assertEquals(0, countScoresForGame(winner.getGame().getId()));
+
+		mockMvc.perform(get("/api/game_view/" + winner.getId()).with(user("kim_bauer@gmail.com").roles("USER")))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.gameState").value("GAME_OVER_WIN"))
+			.andExpect(jsonPath("$.isGameOver").value(true))
+			.andExpect(jsonPath("$.completedTurnCount").value(1))
+			.andExpect(jsonPath("$.scores.length()").value(2))
+			.andExpect(jsonPath("$.scores[?(@.player.email == 'kim_bauer@gmail.com')].score").value(1.0))
+			.andExpect(jsonPath("$.scores[?(@.player.email == 'j.bauer@ctu.gov')].score").value(0.0));
+
+		org.junit.jupiter.api.Assertions.assertEquals(2, countScoresForGame(winner.getGame().getId()));
+
+		mockMvc.perform(get("/api/game_view/" + winner.getId()).with(user("kim_bauer@gmail.com").roles("USER")))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.scores.length()").value(2));
+
+		org.junit.jupiter.api.Assertions.assertEquals(2, countScoresForGame(winner.getGame().getId()));
+	}
+
+	@Test
+	void gameViewReportsLossStateAndRecordedScoresForLosingPlayer() throws Exception {
+		GamePlayer loser = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer winner = createOpponentForGame(loser.getGame(), "j.bauer@ctu.gov");
+		addShip(loser, "Patrol Boat", "A1", "A2");
+		addShip(winner, "Patrol Boat", "B1", "B2");
+		addSalvo(loser, 1, "J10");
+		addSalvo(winner, 1, "A1", "A2");
+
+		mockMvc.perform(get("/api/game_view/" + loser.getId()).with(user("kim_bauer@gmail.com").roles("USER")))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.gameState").value("GAME_OVER_LOSS"))
+			.andExpect(jsonPath("$.isGameOver").value(true))
+			.andExpect(jsonPath("$.completedTurnCount").value(1))
+			.andExpect(jsonPath("$.scores.length()").value(2))
+			.andExpect(jsonPath("$.scores[?(@.player.email == 'kim_bauer@gmail.com')].score").value(0.0))
+			.andExpect(jsonPath("$.scores[?(@.player.email == 'j.bauer@ctu.gov')].score").value(1.0));
+	}
+
+	@Test
+	void gameViewReportsTieStateAndHalfPointScores() throws Exception {
+		GamePlayer first = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer second = createOpponentForGame(first.getGame(), "j.bauer@ctu.gov");
+		addShip(first, "Patrol Boat", "A1", "A2");
+		addShip(second, "Patrol Boat", "B1", "B2");
+		addSalvo(first, 1, "B1", "B2");
+		addSalvo(second, 1, "A1", "A2");
+
+		mockMvc.perform(get("/api/game_view/" + first.getId()).with(user("kim_bauer@gmail.com").roles("USER")))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.gameState").value("GAME_OVER_TIE"))
+			.andExpect(jsonPath("$.isGameOver").value(true))
+			.andExpect(jsonPath("$.completedTurnCount").value(1))
+			.andExpect(jsonPath("$.scores.length()").value(2))
+			.andExpect(jsonPath("$.scores[?(@.player.email == 'kim_bauer@gmail.com')].score").value(0.5))
+			.andExpect(jsonPath("$.scores[?(@.player.email == 'j.bauer@ctu.gov')].score").value(0.5));
+	}
+
+	@Test
 	void gameViewIncludesTurnByTurnHitHistoryAndShipsAfloat() throws Exception {
 			mockMvc.perform(get("/api/game_view/1").with(user("j.bauer@ctu.gov").roles("USER")))
 				.andExpect(status().isOk())
@@ -720,6 +790,12 @@ class SalvoApplicationTests {
 		Salvo salvo = salvoRepository.save(new Salvo(turn, java.util.List.of(locations)));
 		salvo.setGamePlayer(gamePlayer);
 		salvoRepository.save(salvo);
+	}
+
+	private long countScoresForGame(long gameId) {
+		return scoreRepository.findAll().stream()
+			.filter(score -> score.getGame().getId() == gameId)
+			.count();
 	}
 
 	private String validFleetJson() {

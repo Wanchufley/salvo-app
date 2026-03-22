@@ -8,6 +8,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -120,6 +121,76 @@ class GameRulesServiceTests {
 		assertEquals(1, gameRulesService.countShipsAfloat(defender, hitLocations));
 		assertFalse(gameRulesService.isTerminalState(GameRulesService.GAME_STATE_WAITING_FOR_YOUR_SALVO));
 		assertTrue(gameRulesService.isTerminalState(GameRulesService.GAME_STATE_GAME_OVER_WIN));
+	}
+
+	@Test
+	void completedTurnCountUsesLowerSalvoTotalWhenPlayersAreOutOfSync() {
+		Game game = game(100L);
+		GamePlayer current = gamePlayer(1L, game, player(1L, "current@example.com"));
+		GamePlayer opponent = gamePlayer(2L, game, player(2L, "opponent@example.com"));
+		linkGamePlayers(game, current, opponent);
+		addShip(current, "Patrol Boat", "A1", "A2");
+		addShip(opponent, "Patrol Boat", "B1", "B2");
+		addSalvo(current, 1, "B1");
+		addSalvo(current, 2, "B2");
+		addSalvo(current, 3, "C1");
+		addSalvo(opponent, 1, "A1");
+		addSalvo(opponent, 2, "A2");
+
+		assertEquals(2, gameRulesService.getCompletedTurnCount(current, List.of(current, opponent)));
+		assertEquals(3, gameRulesService.calculateCurrentTurn(current));
+	}
+
+	@Test
+	void hitsHistoryTracksNewHitsAndSunkShipsAcrossMultipleTurns() {
+		Game game = game(100L);
+		GamePlayer attacker = gamePlayer(1L, game, player(1L, "attacker@example.com"));
+		GamePlayer defender = gamePlayer(2L, game, player(2L, "defender@example.com"));
+		linkGamePlayers(game, attacker, defender);
+		addShip(defender, "Destroyer", "C1", "C2", "C3");
+		addShip(defender, "Patrol Boat", "D1", "D2");
+		addShip(attacker, "Patrol Boat", "A1", "A2");
+		addSalvo(attacker, 1, "C1", "D1");
+		addSalvo(attacker, 2, "C2", "D2");
+		addSalvo(attacker, 3, "C3");
+		addSalvo(defender, 1, "A1");
+		addSalvo(defender, 2, "A2");
+		addSalvo(defender, 3, "B1");
+
+		Map<Integer, Map<String, Object>> history =
+			gameRulesService.makeHitsHistoryDTO(attacker, List.of(attacker, defender));
+
+		assertEquals(3, history.size());
+
+		Map<String, Object> turnOneSelf = castTurn(history.get(1).get("self"));
+		Map<String, Object> turnTwoSelf = castTurn(history.get(2).get("self"));
+		Map<String, Object> turnThreeSelf = castTurn(history.get(3).get("self"));
+
+		assertEquals(2, turnOneSelf.get("hitCount"));
+		assertEquals(Map.of("Destroyer", 1, "Patrol Boat", 1), turnOneSelf.get("hits"));
+		assertEquals(List.of(), turnOneSelf.get("sunk"));
+		assertEquals(2, turnOneSelf.get("shipsAfloat"));
+
+		assertEquals(2, turnTwoSelf.get("hitCount"));
+		assertEquals(Map.of("Destroyer", 1, "Patrol Boat", 1), turnTwoSelf.get("hits"));
+		assertEquals(List.of("Patrol Boat"), turnTwoSelf.get("sunk"));
+		assertEquals(1, turnTwoSelf.get("shipsAfloat"));
+
+		assertEquals(1, turnThreeSelf.get("hitCount"));
+		assertEquals(Map.of("Destroyer", 1), turnThreeSelf.get("hits"));
+		assertEquals(List.of("Destroyer"), turnThreeSelf.get("sunk"));
+		assertEquals(0, turnThreeSelf.get("shipsAfloat"));
+
+		Map<String, Object> turnTwoOpponent = castTurn(history.get(2).get("opponent"));
+		assertNotNull(turnTwoOpponent);
+		assertEquals(1, turnTwoOpponent.get("hitCount"));
+		assertEquals(List.of("Patrol Boat"), turnTwoOpponent.get("sunk"));
+		assertEquals(0, turnTwoOpponent.get("shipsAfloat"));
+	}
+
+	@SuppressWarnings("unchecked")
+	private Map<String, Object> castTurn(Object value) {
+		return (Map<String, Object>) value;
 	}
 
 	private Game game(long id) {
