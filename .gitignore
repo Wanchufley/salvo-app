@@ -37,6 +37,9 @@ out/
 ### VS Code ###
 .vscode/
 
+### FRONTEND ###
+frontend/node_modules/
+
 ### BUILD ARTIFACTS ###
 src/main/resources/static/assets/
 src/main/resources/static/web/
@@ -48,6 +51,7 @@ src/main/resources/static/web/
 salvo-testbed.pdf
 score-structure.png
 possible-fixes.md
+testing-plan.md
 
 ### WINDOWS ADS METADATA ###
 *:Zone.Identifier
