@@ -23,6 +23,45 @@ class SalvoApplicationTests {
 	}
 
 	@Test
+	void gamesEndpointReturnsSeededGameListForAnonymousUser() throws Exception {
+		mockMvc.perform(get("/api/games"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.player").doesNotExist())
+			.andExpect(jsonPath("$.games.length()").value(8))
+			.andExpect(jsonPath("$.games[0].id").value(1))
+			.andExpect(jsonPath("$.games[0].gamePlayers.length()").value(2))
+			.andExpect(jsonPath("$.games[0].scores.length()").value(2))
+			.andExpect(jsonPath("$.games[5].gamePlayers.length()").value(1))
+			.andExpect(jsonPath("$.games[6].gamePlayers.length()").value(1))
+			.andExpect(jsonPath("$.games[7].gamePlayers.length()").value(2));
+	}
+
+	@Test
+	void gamesEndpointIncludesAuthenticatedPlayerSummary() throws Exception {
+		mockMvc.perform(get("/api/games").with(user("j.bauer@ctu.gov").roles("USER")))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.player.id").value(1))
+			.andExpect(jsonPath("$.player.username").value("j.bauer@ctu.gov"))
+			.andExpect(jsonPath("$.games.length()").value(8));
+	}
+
+	@Test
+	void playerEndpointReturnsEmptyObjectForAnonymousUser() throws Exception {
+		mockMvc.perform(get("/api/player"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.id").doesNotExist())
+			.andExpect(jsonPath("$.email").doesNotExist());
+	}
+
+	@Test
+	void playerEndpointReturnsAuthenticatedPlayer() throws Exception {
+		mockMvc.perform(get("/api/player").with(user("j.bauer@ctu.gov").roles("USER")))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.id").value(1))
+			.andExpect(jsonPath("$.email").value("j.bauer@ctu.gov"));
+	}
+
+	@Test
 	void gameViewIncludesTurnByTurnHitHistoryAndShipsAfloat() throws Exception {
 			mockMvc.perform(get("/api/game_view/1").with(user("j.bauer@ctu.gov").roles("USER")))
 				.andExpect(status().isOk())
