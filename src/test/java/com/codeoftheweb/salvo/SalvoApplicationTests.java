@@ -202,6 +202,39 @@ class SalvoApplicationTests {
 	}
 
 	@Test
+	void gameViewExposesExpectedStateMetadataAcrossSeededGames() throws Exception {
+		assertGameViewState(1, "j.bauer@ctu.gov", "GAME_OVER_WIN", false, false, true, 3, 2);
+		assertGameViewState(2, "c.obrian@ctu.gov", "GAME_OVER_LOSS", false, false, true, 3, 2);
+		assertGameViewState(3, "j.bauer@ctu.gov", "GAME_OVER_TIE", false, false, true, 3, 2);
+		assertGameViewState(9, "t.almeida@ctu.gov", "WAITING_FOR_YOUR_SALVO", false, true, false, 3, 2);
+		assertGameViewState(10, "j.bauer@ctu.gov", "WAITING_FOR_OPPONENT_SALVO", false, false, false, 3, 2);
+		assertGameViewState(11, "kim_bauer@gmail.com", "WAITING_FOR_OPPONENT", false, false, false, 1, 0);
+		assertGameViewState(12, "t.almeida@ctu.gov", "PLACE_SHIPS", true, false, false, 1, 0);
+		assertGameViewState(13, "kim_bauer@gmail.com", "STARTING_SOON", false, true, false, 1, 0);
+	}
+
+	@Test
+	void gameViewHidesOpponentFutureSalvosUntilCurrentPlayerCatchesUp() throws Exception {
+		mockMvc.perform(get("/api/game_view/9").with(user("t.almeida@ctu.gov").roles("USER")))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.salvoes['9']['1'][0]").value("A1"))
+			.andExpect(jsonPath("$.salvoes['9']['2'][0]").value("G6"))
+			.andExpect(jsonPath("$.salvoes['10']['1'][0]").value("B5"))
+			.andExpect(jsonPath("$.salvoes['10']['2'][0]").value("C6"))
+			.andExpect(jsonPath("$.salvoes['10']['3']").doesNotExist());
+	}
+
+	@Test
+	void gameViewAlwaysShowsCurrentPlayersOwnFutureSalvos() throws Exception {
+		mockMvc.perform(get("/api/game_view/10").with(user("j.bauer@ctu.gov").roles("USER")))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.salvoes['10']['1'][0]").value("B5"))
+			.andExpect(jsonPath("$.salvoes['10']['2'][0]").value("C6"))
+			.andExpect(jsonPath("$.salvoes['10']['3'][0]").value("H1"))
+			.andExpect(jsonPath("$.salvoes['9']['2'][0]").value("G6"));
+	}
+
+	@Test
 	void gameViewIncludesTurnByTurnHitHistoryAndShipsAfloat() throws Exception {
 			mockMvc.perform(get("/api/game_view/1").with(user("j.bauer@ctu.gov").roles("USER")))
 				.andExpect(status().isOk())
@@ -237,6 +270,26 @@ class SalvoApplicationTests {
 			gamePlayerRepository.save(new GamePlayer(game, player));
 		}
 		return game;
+	}
+
+	private void assertGameViewState(
+		long gamePlayerId,
+		String userName,
+		String expectedState,
+		boolean expectedCanPlaceShips,
+		boolean expectedCanFireSalvo,
+		boolean expectedGameOver,
+		int expectedCurrentTurn,
+		int expectedCompletedTurnCount
+	) throws Exception {
+		mockMvc.perform(get("/api/game_view/" + gamePlayerId).with(user(userName).roles("USER")))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.gameState").value(expectedState))
+			.andExpect(jsonPath("$.canPlaceShips").value(expectedCanPlaceShips))
+			.andExpect(jsonPath("$.canFireSalvo").value(expectedCanFireSalvo))
+			.andExpect(jsonPath("$.isGameOver").value(expectedGameOver))
+			.andExpect(jsonPath("$.currentTurn").value(expectedCurrentTurn))
+			.andExpect(jsonPath("$.completedTurnCount").value(expectedCompletedTurnCount));
 	}
 
 }
