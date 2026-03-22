@@ -4,10 +4,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -17,6 +21,12 @@ class SalvoApplicationTests {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private GameRepository gameRepository;
+
+	@Autowired
+	private GamePlayerRepository gamePlayerRepository;
 
 	@Test
 	void contextLoads() {
@@ -59,6 +69,80 @@ class SalvoApplicationTests {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.id").value(1))
 			.andExpect(jsonPath("$.email").value("j.bauer@ctu.gov"));
+	}
+
+	@Test
+	void registerCreatesPlayerAndAuthenticatesSession() throws Exception {
+		MvcResult result = mockMvc.perform(post("/api/players")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "username": "new.player@example.com",
+					  "password": "secret123"
+					}
+					"""))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.id").isNumber())
+			.andExpect(jsonPath("$.name").value("new.player@example.com"))
+			.andReturn();
+
+		MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+
+		mockMvc.perform(get("/api/player").session(session))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.email").value("new.player@example.com"));
+	}
+
+	@Test
+	void registerRejectsInvalidCredentials() throws Exception {
+		mockMvc.perform(post("/api/players")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "username": "invalid user",
+					  "password": "bad password"
+					}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Invalid username or password"));
+	}
+
+	@Test
+	void registerRejectsDuplicateUserName() throws Exception {
+		mockMvc.perform(post("/api/players")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "username": "j.bauer@ctu.gov",
+					  "password": "24"
+					}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Name in use"));
+	}
+
+	@Test
+	void createGameRequiresAuthentication() throws Exception {
+		long gameCountBefore = gameRepository.count();
+
+		mockMvc.perform(post("/api/games"))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error").value("Unauthorized"));
+
+		org.junit.jupiter.api.Assertions.assertEquals(gameCountBefore, gameRepository.count());
+	}
+
+	@Test
+	void createGameCreatesGameAndGamePlayerForAuthenticatedUser() throws Exception {
+		long gameCountBefore = gameRepository.count();
+		long gamePlayerCountBefore = gamePlayerRepository.count();
+
+		mockMvc.perform(post("/api/games").with(user("j.bauer@ctu.gov").roles("USER")))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.gpid").isNumber());
+
+		org.junit.jupiter.api.Assertions.assertEquals(gameCountBefore + 1, gameRepository.count());
+		org.junit.jupiter.api.Assertions.assertEquals(gamePlayerCountBefore + 1, gamePlayerRepository.count());
 	}
 
 	@Test
