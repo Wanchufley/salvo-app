@@ -28,6 +28,9 @@ class SalvoApplicationTests {
 	@Autowired
 	private GamePlayerRepository gamePlayerRepository;
 
+	@Autowired
+	private PlayerRepository playerRepository;
+
 	@Test
 	void contextLoads() {
 	}
@@ -146,6 +149,59 @@ class SalvoApplicationTests {
 	}
 
 	@Test
+	void joinGameCreatesSecondGamePlayerForOpenGame() throws Exception {
+		Game game = createGameWithPlayers("j.bauer@ctu.gov");
+		long gamePlayerCountBefore = gamePlayerRepository.count();
+
+		mockMvc.perform(post("/api/games/" + game.getId() + "/players").with(user("kim_bauer@gmail.com").roles("USER")))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.gpid").isNumber());
+
+		org.junit.jupiter.api.Assertions.assertEquals(gamePlayerCountBefore + 1, gamePlayerRepository.count());
+		org.junit.jupiter.api.Assertions.assertEquals(2, gamePlayerRepository.findAll().stream()
+			.filter(gamePlayer -> gamePlayer.getGame().getId() == game.getId())
+			.count());
+	}
+
+	@Test
+	void joinGameRejectsMissingGame() throws Exception {
+		mockMvc.perform(post("/api/games/999999/players").with(user("kim_bauer@gmail.com").roles("USER")))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("No such game"));
+	}
+
+	@Test
+	void joinGameRejectsPlayerAlreadyInGame() throws Exception {
+		Game game = createGameWithPlayers("j.bauer@ctu.gov");
+
+		mockMvc.perform(post("/api/games/" + game.getId() + "/players").with(user("j.bauer@ctu.gov").roles("USER")))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Already in game"));
+	}
+
+	@Test
+	void joinGameRejectsFullGame() throws Exception {
+		Game game = createGameWithPlayers("j.bauer@ctu.gov", "c.obrian@ctu.gov");
+
+		mockMvc.perform(post("/api/games/" + game.getId() + "/players").with(user("kim_bauer@gmail.com").roles("USER")))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Game is full"));
+	}
+
+	@Test
+	void gameViewRequiresAuthentication() throws Exception {
+		mockMvc.perform(get("/api/game_view/1"))
+			.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void gameViewRejectsNonOwner() throws Exception {
+		mockMvc.perform(get("/api/game_view/1").with(user("c.obrian@ctu.gov").roles("USER")))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error").value("Unauthorized"));
+	}
+
+	@Test
 	void gameViewIncludesTurnByTurnHitHistoryAndShipsAfloat() throws Exception {
 			mockMvc.perform(get("/api/game_view/1").with(user("j.bauer@ctu.gov").roles("USER")))
 				.andExpect(status().isOk())
@@ -172,6 +228,15 @@ class SalvoApplicationTests {
 			.andExpect(jsonPath("$.hits['2'].opponent.hitCount").value(2))
 			.andExpect(jsonPath("$.hits['2'].opponent.sunk").isEmpty())
 			.andExpect(jsonPath("$.hits['2'].opponent.shipsAfloat").value(2));
+	}
+
+	private Game createGameWithPlayers(String... userNames) {
+		Game game = gameRepository.save(new Game());
+		for (String userName : userNames) {
+			Player player = playerRepository.findByUserName(userName);
+			gamePlayerRepository.save(new GamePlayer(game, player));
+		}
+		return game;
 	}
 
 }
