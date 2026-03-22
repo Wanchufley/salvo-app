@@ -31,6 +31,9 @@ class SalvoApplicationTests {
 	@Autowired
 	private PlayerRepository playerRepository;
 
+	@Autowired
+	private ShipRepository shipRepository;
+
 	@Test
 	void contextLoads() {
 	}
@@ -235,6 +238,179 @@ class SalvoApplicationTests {
 	}
 
 	@Test
+	void placeShipsCreatesFleetForAuthorizedPlayer() throws Exception {
+		GamePlayer gamePlayer = createGamePlayerFor("kim_bauer@gmail.com");
+		long shipCountBefore = shipRepository.count();
+
+		mockMvc.perform(post("/api/games/players/" + gamePlayer.getId() + "/ships")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(validFleetJson()))
+			.andExpect(status().isCreated());
+
+		org.junit.jupiter.api.Assertions.assertEquals(shipCountBefore + 5, shipRepository.count());
+		org.junit.jupiter.api.Assertions.assertEquals(5, shipRepository.findAll().stream()
+			.filter(ship -> ship.getGamePlayer().getId() == gamePlayer.getId())
+			.count());
+	}
+
+	@Test
+	void placeShipsRequiresAuthentication() throws Exception {
+		GamePlayer gamePlayer = createGamePlayerFor("kim_bauer@gmail.com");
+		long shipCountBefore = shipRepository.count();
+
+		mockMvc.perform(post("/api/games/players/" + gamePlayer.getId() + "/ships")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(validFleetJson()))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error").value("Unauthorized"));
+
+		org.junit.jupiter.api.Assertions.assertEquals(shipCountBefore, shipRepository.count());
+	}
+
+	@Test
+	void placeShipsRejectsWrongGamePlayerOwner() throws Exception {
+		GamePlayer gamePlayer = createGamePlayerFor("kim_bauer@gmail.com");
+
+		mockMvc.perform(post("/api/games/players/" + gamePlayer.getId() + "/ships")
+				.with(user("j.bauer@ctu.gov").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(validFleetJson()))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error").value("Unauthorized"));
+	}
+
+	@Test
+	void placeShipsRejectsSecondPlacement() throws Exception {
+		GamePlayer gamePlayer = createGamePlayerFor("kim_bauer@gmail.com");
+		addShip(gamePlayer, "Destroyer", "A1", "A2", "A3");
+
+		mockMvc.perform(post("/api/games/players/" + gamePlayer.getId() + "/ships")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(validFleetJson()))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Ships already placed"));
+	}
+
+	@Test
+	void placeShipsRejectsWrongFleetSize() throws Exception {
+		GamePlayer gamePlayer = createGamePlayerFor("kim_bauer@gmail.com");
+
+		mockMvc.perform(post("/api/games/players/" + gamePlayer.getId() + "/ships")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					[
+					  { "type": "Carrier", "locations": ["A1", "A2", "A3", "A4", "A5"] },
+					  { "type": "Battleship", "locations": ["B1", "B2", "B3", "B4"] }
+					]
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("You must place exactly 5 ships"));
+	}
+
+	@Test
+	void placeShipsRejectsDuplicateShipTypes() throws Exception {
+		GamePlayer gamePlayer = createGamePlayerFor("kim_bauer@gmail.com");
+
+		mockMvc.perform(post("/api/games/players/" + gamePlayer.getId() + "/ships")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					[
+					  { "type": "Destroyer", "locations": ["A1", "A2", "A3"] },
+					  { "type": "Destroyer", "locations": ["B1", "B2", "B3"] },
+					  { "type": "Patrol Boat", "locations": ["C1", "C2"] },
+					  { "type": "Submarine", "locations": ["D1", "D2", "D3"] },
+					  { "type": "Carrier", "locations": ["E1", "E2", "E3", "E4", "E5"] }
+					]
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Ship types must be unique"));
+	}
+
+	@Test
+	void placeShipsRejectsBlankShipType() throws Exception {
+		GamePlayer gamePlayer = createGamePlayerFor("kim_bauer@gmail.com");
+
+		mockMvc.perform(post("/api/games/players/" + gamePlayer.getId() + "/ships")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					[
+					  { "type": " ", "locations": ["A1", "A2", "A3"] },
+					  { "type": "Battleship", "locations": ["B1", "B2", "B3", "B4"] },
+					  { "type": "Patrol Boat", "locations": ["C1", "C2"] },
+					  { "type": "Submarine", "locations": ["D1", "D2", "D3"] },
+					  { "type": "Carrier", "locations": ["E1", "E2", "E3", "E4", "E5"] }
+					]
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Ship types must be unique"));
+	}
+
+	@Test
+	void placeShipsRejectsOverlappingLocations() throws Exception {
+		GamePlayer gamePlayer = createGamePlayerFor("kim_bauer@gmail.com");
+
+		mockMvc.perform(post("/api/games/players/" + gamePlayer.getId() + "/ships")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					[
+					  { "type": "Carrier", "locations": ["A1", "A2", "A3", "A4", "A5"] },
+					  { "type": "Battleship", "locations": ["B1", "B2", "B3", "B4"] },
+					  { "type": "Destroyer", "locations": ["C1", "C2", "C3"] },
+					  { "type": "Submarine", "locations": ["D1", "D2", "D3"] },
+					  { "type": "Patrol Boat", "locations": ["D3", "E3"] }
+					]
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Ships must occupy unique board locations"));
+	}
+
+	@Test
+	void placeShipsRejectsBlankLocation() throws Exception {
+		GamePlayer gamePlayer = createGamePlayerFor("kim_bauer@gmail.com");
+
+		mockMvc.perform(post("/api/games/players/" + gamePlayer.getId() + "/ships")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					[
+					  { "type": "Carrier", "locations": ["A1", "A2", "A3", "A4", "A5"] },
+					  { "type": "Battleship", "locations": ["B1", "B2", "B3", "B4"] },
+					  { "type": "Destroyer", "locations": ["C1", "C2", "C3"] },
+					  { "type": "Submarine", "locations": ["D1", "D2", "D3"] },
+					  { "type": "Patrol Boat", "locations": [" ", "E3"] }
+					]
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Ships must occupy unique board locations"));
+	}
+
+	@Test
+	void placeShipsRejectsEmptyLocationList() throws Exception {
+		GamePlayer gamePlayer = createGamePlayerFor("kim_bauer@gmail.com");
+
+		mockMvc.perform(post("/api/games/players/" + gamePlayer.getId() + "/ships")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					[
+					  { "type": "Carrier", "locations": ["A1", "A2", "A3", "A4", "A5"] },
+					  { "type": "Battleship", "locations": ["B1", "B2", "B3", "B4"] },
+					  { "type": "Destroyer", "locations": ["C1", "C2", "C3"] },
+					  { "type": "Submarine", "locations": ["D1", "D2", "D3"] },
+					  { "type": "Patrol Boat", "locations": [] }
+					]
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Ships must occupy unique board locations"));
+	}
+
+	@Test
 	void gameViewIncludesTurnByTurnHitHistoryAndShipsAfloat() throws Exception {
 			mockMvc.perform(get("/api/game_view/1").with(user("j.bauer@ctu.gov").roles("USER")))
 				.andExpect(status().isOk())
@@ -270,6 +446,30 @@ class SalvoApplicationTests {
 			gamePlayerRepository.save(new GamePlayer(game, player));
 		}
 		return game;
+	}
+
+	private GamePlayer createGamePlayerFor(String userName) {
+		Game game = gameRepository.save(new Game());
+		Player player = playerRepository.findByUserName(userName);
+		return gamePlayerRepository.save(new GamePlayer(game, player));
+	}
+
+	private void addShip(GamePlayer gamePlayer, String type, String... locations) {
+		Ship ship = shipRepository.save(new Ship(type, java.util.List.of(locations)));
+		ship.setGamePlayer(gamePlayer);
+		shipRepository.save(ship);
+	}
+
+	private String validFleetJson() {
+		return """
+			[
+			  { "type": "Carrier", "locations": ["A1", "A2", "A3", "A4", "A5"] },
+			  { "type": "Battleship", "locations": ["B1", "B2", "B3", "B4"] },
+			  { "type": "Destroyer", "locations": ["C1", "C2", "C3"] },
+			  { "type": "Submarine", "locations": ["D1", "D2", "D3"] },
+			  { "type": "Patrol Boat", "locations": ["E1", "E2"] }
+			]
+			""";
 	}
 
 	private void assertGameViewState(
