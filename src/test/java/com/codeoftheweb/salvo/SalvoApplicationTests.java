@@ -418,13 +418,10 @@ class SalvoApplicationTests {
 
 	@Test
 	void placeSalvoCreatesSalvoForAuthorizedPlayer() throws Exception {
-		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
-		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
-		addStandardShips(current);
-		addStandardShips(opponent);
+		BattleFixture battle = createReadyBattle("kim_bauer@gmail.com", "j.bauer@ctu.gov");
 		long salvoCountBefore = salvoRepository.count();
 
-		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+		mockMvc.perform(post("/api/games/players/" + battle.current().getId() + "/salvos")
 				.with(user("kim_bauer@gmail.com").roles("USER"))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -440,12 +437,9 @@ class SalvoApplicationTests {
 
 	@Test
 	void placeSalvoRequiresAuthentication() throws Exception {
-		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
-		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
-		addStandardShips(current);
-		addStandardShips(opponent);
+		BattleFixture battle = createReadyBattle("kim_bauer@gmail.com", "j.bauer@ctu.gov");
 
-		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+		mockMvc.perform(post("/api/games/players/" + battle.current().getId() + "/salvos")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 					{
@@ -459,12 +453,9 @@ class SalvoApplicationTests {
 
 	@Test
 	void placeSalvoRejectsWrongGamePlayerOwner() throws Exception {
-		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
-		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
-		addStandardShips(current);
-		addStandardShips(opponent);
+		BattleFixture battle = createReadyBattle("kim_bauer@gmail.com", "j.bauer@ctu.gov");
 
-		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+		mockMvc.perform(post("/api/games/players/" + battle.current().getId() + "/salvos")
 				.with(user("c.obrian@ctu.gov").roles("USER"))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -535,12 +526,9 @@ class SalvoApplicationTests {
 
 	@Test
 	void placeSalvoRejectsInvalidTurn() throws Exception {
-		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
-		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
-		addStandardShips(current);
-		addStandardShips(opponent);
+		BattleFixture battle = createReadyBattle("kim_bauer@gmail.com", "j.bauer@ctu.gov");
 
-		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+		mockMvc.perform(post("/api/games/players/" + battle.current().getId() + "/salvos")
 				.with(user("kim_bauer@gmail.com").roles("USER"))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -555,13 +543,10 @@ class SalvoApplicationTests {
 
 	@Test
 	void placeSalvoRejectsDuplicateTurnSubmission() throws Exception {
-		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
-		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
-		addStandardShips(current);
-		addStandardShips(opponent);
-		addSalvo(current, 1, "A1", "A2", "A3");
+		BattleFixture battle = createReadyBattle("kim_bauer@gmail.com", "j.bauer@ctu.gov");
+		addSalvo(battle.current(), 1, "A1", "A2", "A3");
 
-		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+		mockMvc.perform(post("/api/games/players/" + battle.current().getId() + "/salvos")
 				.with(user("kim_bauer@gmail.com").roles("USER"))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -576,12 +561,9 @@ class SalvoApplicationTests {
 
 	@Test
 	void placeSalvoRejectsZeroShots() throws Exception {
-		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
-		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
-		addStandardShips(current);
-		addStandardShips(opponent);
+		BattleFixture battle = createReadyBattle("kim_bauer@gmail.com", "j.bauer@ctu.gov");
 
-		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+		mockMvc.perform(post("/api/games/players/" + battle.current().getId() + "/salvos")
 				.with(user("kim_bauer@gmail.com").roles("USER"))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -596,12 +578,9 @@ class SalvoApplicationTests {
 
 	@Test
 	void placeSalvoRejectsMoreThanFiveShots() throws Exception {
-		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
-		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
-		addStandardShips(current);
-		addStandardShips(opponent);
+		BattleFixture battle = createReadyBattle("kim_bauer@gmail.com", "j.bauer@ctu.gov");
 
-		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+		mockMvc.perform(post("/api/games/players/" + battle.current().getId() + "/salvos")
 				.with(user("kim_bauer@gmail.com").roles("USER"))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -616,12 +595,9 @@ class SalvoApplicationTests {
 
 	@Test
 	void placeSalvoRejectsDuplicateShotLocations() throws Exception {
-		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
-		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
-		addStandardShips(current);
-		addStandardShips(opponent);
+		BattleFixture battle = createReadyBattle("kim_bauer@gmail.com", "j.bauer@ctu.gov");
 
-		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+		mockMvc.perform(post("/api/games/players/" + battle.current().getId() + "/salvos")
 				.with(user("kim_bauer@gmail.com").roles("USER"))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -636,14 +612,11 @@ class SalvoApplicationTests {
 
 	@Test
 	void placeSalvoRejectsWhenGameIsAlreadyOver() throws Exception {
-		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
-		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
-		addShip(current, "Patrol Boat", "A1", "A2");
-		addShip(opponent, "Patrol Boat", "B1", "B2");
-		addSalvo(current, 1, "B1", "B2");
-		addSalvo(opponent, 1, "A1", "A2");
+		BattleFixture battle = createPatrolBoatBattle("kim_bauer@gmail.com", "j.bauer@ctu.gov");
+		addSalvo(battle.current(), 1, "B1", "B2");
+		addSalvo(battle.opponent(), 1, "A1", "A2");
 
-		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+		mockMvc.perform(post("/api/games/players/" + battle.current().getId() + "/salvos")
 				.with(user("kim_bauer@gmail.com").roles("USER"))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -658,16 +631,13 @@ class SalvoApplicationTests {
 
 	@Test
 	void gameViewRecordsWinStateAndCreatesScoresOnce() throws Exception {
-		GamePlayer winner = createGamePlayerFor("kim_bauer@gmail.com");
-		GamePlayer loser = createOpponentForGame(winner.getGame(), "j.bauer@ctu.gov");
-		addShip(winner, "Patrol Boat", "A1", "A2");
-		addShip(loser, "Patrol Boat", "B1", "B2");
-		addSalvo(winner, 1, "B1", "B2");
-		addSalvo(loser, 1, "J10");
+		BattleFixture battle = createPatrolBoatBattle("kim_bauer@gmail.com", "j.bauer@ctu.gov");
+		addSalvo(battle.current(), 1, "B1", "B2");
+		addSalvo(battle.opponent(), 1, "J10");
 
-		org.junit.jupiter.api.Assertions.assertEquals(0, countScoresForGame(winner.getGame().getId()));
+		org.junit.jupiter.api.Assertions.assertEquals(0, countScoresForGame(battle.game().getId()));
 
-		mockMvc.perform(get("/api/game_view/" + winner.getId()).with(user("kim_bauer@gmail.com").roles("USER")))
+		mockMvc.perform(get("/api/game_view/" + battle.current().getId()).with(user("kim_bauer@gmail.com").roles("USER")))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.gameState").value("GAME_OVER_WIN"))
 			.andExpect(jsonPath("$.isGameOver").value(true))
@@ -676,25 +646,22 @@ class SalvoApplicationTests {
 			.andExpect(jsonPath("$.scores[?(@.player.email == 'kim_bauer@gmail.com')].score").value(1.0))
 			.andExpect(jsonPath("$.scores[?(@.player.email == 'j.bauer@ctu.gov')].score").value(0.0));
 
-		org.junit.jupiter.api.Assertions.assertEquals(2, countScoresForGame(winner.getGame().getId()));
+		org.junit.jupiter.api.Assertions.assertEquals(2, countScoresForGame(battle.game().getId()));
 
-		mockMvc.perform(get("/api/game_view/" + winner.getId()).with(user("kim_bauer@gmail.com").roles("USER")))
+		mockMvc.perform(get("/api/game_view/" + battle.current().getId()).with(user("kim_bauer@gmail.com").roles("USER")))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.scores.length()").value(2));
 
-		org.junit.jupiter.api.Assertions.assertEquals(2, countScoresForGame(winner.getGame().getId()));
+		org.junit.jupiter.api.Assertions.assertEquals(2, countScoresForGame(battle.game().getId()));
 	}
 
 	@Test
 	void gameViewReportsLossStateAndRecordedScoresForLosingPlayer() throws Exception {
-		GamePlayer loser = createGamePlayerFor("kim_bauer@gmail.com");
-		GamePlayer winner = createOpponentForGame(loser.getGame(), "j.bauer@ctu.gov");
-		addShip(loser, "Patrol Boat", "A1", "A2");
-		addShip(winner, "Patrol Boat", "B1", "B2");
-		addSalvo(loser, 1, "J10");
-		addSalvo(winner, 1, "A1", "A2");
+		BattleFixture battle = createPatrolBoatBattle("kim_bauer@gmail.com", "j.bauer@ctu.gov");
+		addSalvo(battle.current(), 1, "J10");
+		addSalvo(battle.opponent(), 1, "A1", "A2");
 
-		mockMvc.perform(get("/api/game_view/" + loser.getId()).with(user("kim_bauer@gmail.com").roles("USER")))
+		mockMvc.perform(get("/api/game_view/" + battle.current().getId()).with(user("kim_bauer@gmail.com").roles("USER")))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.gameState").value("GAME_OVER_LOSS"))
 			.andExpect(jsonPath("$.isGameOver").value(true))
@@ -706,14 +673,11 @@ class SalvoApplicationTests {
 
 	@Test
 	void gameViewReportsTieStateAndHalfPointScores() throws Exception {
-		GamePlayer first = createGamePlayerFor("kim_bauer@gmail.com");
-		GamePlayer second = createOpponentForGame(first.getGame(), "j.bauer@ctu.gov");
-		addShip(first, "Patrol Boat", "A1", "A2");
-		addShip(second, "Patrol Boat", "B1", "B2");
-		addSalvo(first, 1, "B1", "B2");
-		addSalvo(second, 1, "A1", "A2");
+		BattleFixture battle = createPatrolBoatBattle("kim_bauer@gmail.com", "j.bauer@ctu.gov");
+		addSalvo(battle.current(), 1, "B1", "B2");
+		addSalvo(battle.opponent(), 1, "A1", "A2");
 
-		mockMvc.perform(get("/api/game_view/" + first.getId()).with(user("kim_bauer@gmail.com").roles("USER")))
+		mockMvc.perform(get("/api/game_view/" + battle.current().getId()).with(user("kim_bauer@gmail.com").roles("USER")))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.gameState").value("GAME_OVER_TIE"))
 			.andExpect(jsonPath("$.isGameOver").value(true))
@@ -772,6 +736,22 @@ class SalvoApplicationTests {
 		return gamePlayerRepository.save(new GamePlayer(game, player));
 	}
 
+	private BattleFixture createReadyBattle(String currentUserName, String opponentUserName) {
+		GamePlayer current = createGamePlayerFor(currentUserName);
+		GamePlayer opponent = createOpponentForGame(current.getGame(), opponentUserName);
+		addStandardShips(current);
+		addStandardShips(opponent);
+		return new BattleFixture(current.getGame(), current, opponent);
+	}
+
+	private BattleFixture createPatrolBoatBattle(String currentUserName, String opponentUserName) {
+		GamePlayer current = createGamePlayerFor(currentUserName);
+		GamePlayer opponent = createOpponentForGame(current.getGame(), opponentUserName);
+		addShip(current, "Patrol Boat", "A1", "A2");
+		addShip(opponent, "Patrol Boat", "B1", "B2");
+		return new BattleFixture(current.getGame(), current, opponent);
+	}
+
 	private void addShip(GamePlayer gamePlayer, String type, String... locations) {
 		Ship ship = shipRepository.save(new Ship(type, java.util.List.of(locations)));
 		ship.setGamePlayer(gamePlayer);
@@ -828,6 +808,9 @@ class SalvoApplicationTests {
 			.andExpect(jsonPath("$.isGameOver").value(expectedGameOver))
 			.andExpect(jsonPath("$.currentTurn").value(expectedCurrentTurn))
 			.andExpect(jsonPath("$.completedTurnCount").value(expectedCompletedTurnCount));
+	}
+
+	private record BattleFixture(Game game, GamePlayer current, GamePlayer opponent) {
 	}
 
 }
