@@ -34,6 +34,9 @@ class SalvoApplicationTests {
 	@Autowired
 	private ShipRepository shipRepository;
 
+	@Autowired
+	private SalvoRepository salvoRepository;
+
 	@Test
 	void contextLoads() {
 	}
@@ -411,6 +414,246 @@ class SalvoApplicationTests {
 	}
 
 	@Test
+	void placeSalvoCreatesSalvoForAuthorizedPlayer() throws Exception {
+		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
+		addStandardShips(current);
+		addStandardShips(opponent);
+		long salvoCountBefore = salvoRepository.count();
+
+		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "turn": 1,
+					  "locations": ["A1", "A2", "A3"]
+					}
+					"""))
+			.andExpect(status().isCreated());
+
+		org.junit.jupiter.api.Assertions.assertEquals(salvoCountBefore + 1, salvoRepository.count());
+	}
+
+	@Test
+	void placeSalvoRequiresAuthentication() throws Exception {
+		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
+		addStandardShips(current);
+		addStandardShips(opponent);
+
+		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "turn": 1,
+					  "locations": ["A1", "A2", "A3"]
+					}
+					"""))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error").value("Unauthorized"));
+	}
+
+	@Test
+	void placeSalvoRejectsWrongGamePlayerOwner() throws Exception {
+		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
+		addStandardShips(current);
+		addStandardShips(opponent);
+
+		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+				.with(user("c.obrian@ctu.gov").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "turn": 1,
+					  "locations": ["A1", "A2", "A3"]
+					}
+					"""))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error").value("Unauthorized"));
+	}
+
+	@Test
+	void placeSalvoRejectsWhenWaitingForOpponent() throws Exception {
+		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
+		addStandardShips(current);
+
+		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "turn": 1,
+					  "locations": ["A1", "A2", "A3"]
+					}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Waiting for an opponent"));
+	}
+
+	@Test
+	void placeSalvoRejectsWhenCurrentPlayerHasNotPlacedShips() throws Exception {
+		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
+		addStandardShips(opponent);
+
+		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "turn": 1,
+					  "locations": ["A1", "A2", "A3"]
+					}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Place your ships first"));
+	}
+
+	@Test
+	void placeSalvoRejectsWhenOpponentHasNotPlacedShips() throws Exception {
+		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
+		createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
+		addStandardShips(current);
+
+		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "turn": 1,
+					  "locations": ["A1", "A2", "A3"]
+					}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Waiting for opponent to place ships"));
+	}
+
+	@Test
+	void placeSalvoRejectsInvalidTurn() throws Exception {
+		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
+		addStandardShips(current);
+		addStandardShips(opponent);
+
+		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "turn": 2,
+					  "locations": ["A1", "A2", "A3"]
+					}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Invalid turn"));
+	}
+
+	@Test
+	void placeSalvoRejectsDuplicateTurnSubmission() throws Exception {
+		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
+		addStandardShips(current);
+		addStandardShips(opponent);
+		addSalvo(current, 1, "A1", "A2", "A3");
+
+		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "turn": 1,
+					  "locations": ["B1", "B2", "B3"]
+					}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Salvo already submitted for this turn"));
+	}
+
+	@Test
+	void placeSalvoRejectsZeroShots() throws Exception {
+		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
+		addStandardShips(current);
+		addStandardShips(opponent);
+
+		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "turn": 1,
+					  "locations": []
+					}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("A salvo must contain between 1 and 5 shots"));
+	}
+
+	@Test
+	void placeSalvoRejectsMoreThanFiveShots() throws Exception {
+		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
+		addStandardShips(current);
+		addStandardShips(opponent);
+
+		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "turn": 1,
+					  "locations": ["A1", "A2", "A3", "A4", "A5", "A6"]
+					}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("A salvo must contain between 1 and 5 shots"));
+	}
+
+	@Test
+	void placeSalvoRejectsDuplicateShotLocations() throws Exception {
+		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
+		addStandardShips(current);
+		addStandardShips(opponent);
+
+		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "turn": 1,
+					  "locations": ["A1", "A1", "A2"]
+					}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Salvo shots must be unique"));
+	}
+
+	@Test
+	void placeSalvoRejectsWhenGameIsAlreadyOver() throws Exception {
+		GamePlayer current = createGamePlayerFor("kim_bauer@gmail.com");
+		GamePlayer opponent = createOpponentForGame(current.getGame(), "j.bauer@ctu.gov");
+		addShip(current, "Patrol Boat", "A1", "A2");
+		addShip(opponent, "Patrol Boat", "B1", "B2");
+		addSalvo(current, 1, "B1", "B2");
+		addSalvo(opponent, 1, "A1", "A2");
+
+		mockMvc.perform(post("/api/games/players/" + current.getId() + "/salvos")
+				.with(user("kim_bauer@gmail.com").roles("USER"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "turn": 2,
+					  "locations": ["C1"]
+					}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error").value("Game is over"));
+	}
+
+	@Test
 	void gameViewIncludesTurnByTurnHitHistoryAndShipsAfloat() throws Exception {
 			mockMvc.perform(get("/api/game_view/1").with(user("j.bauer@ctu.gov").roles("USER")))
 				.andExpect(status().isOk())
@@ -454,10 +697,29 @@ class SalvoApplicationTests {
 		return gamePlayerRepository.save(new GamePlayer(game, player));
 	}
 
+	private GamePlayer createOpponentForGame(Game game, String userName) {
+		Player player = playerRepository.findByUserName(userName);
+		return gamePlayerRepository.save(new GamePlayer(game, player));
+	}
+
 	private void addShip(GamePlayer gamePlayer, String type, String... locations) {
 		Ship ship = shipRepository.save(new Ship(type, java.util.List.of(locations)));
 		ship.setGamePlayer(gamePlayer);
 		shipRepository.save(ship);
+	}
+
+	private void addStandardShips(GamePlayer gamePlayer) {
+		addShip(gamePlayer, "Carrier", "A1", "A2", "A3", "A4", "A5");
+		addShip(gamePlayer, "Battleship", "B1", "B2", "B3", "B4");
+		addShip(gamePlayer, "Destroyer", "C1", "C2", "C3");
+		addShip(gamePlayer, "Submarine", "D1", "D2", "D3");
+		addShip(gamePlayer, "Patrol Boat", "E1", "E2");
+	}
+
+	private void addSalvo(GamePlayer gamePlayer, int turn, String... locations) {
+		Salvo salvo = salvoRepository.save(new Salvo(turn, java.util.List.of(locations)));
+		salvo.setGamePlayer(gamePlayer);
+		salvoRepository.save(salvo);
 	}
 
 	private String validFleetJson() {
